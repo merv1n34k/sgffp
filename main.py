@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Parse SnapGene file to JSON
+Parse SnapGeneFileFormat file to JSON
 """
 
 import struct
@@ -9,8 +9,8 @@ import lzma
 import sys
 
 
-def parse_snapgene(filepath):
-    """Parse SnapGene file to JSON structure"""
+def parse_sgff(filepath):
+    """Parse SnapGene file format to JSON structure"""
 
     with open(filepath, "rb") as f:
 
@@ -78,36 +78,37 @@ def parse_snapgene(filepath):
 
             block_type = type_byte[0]
             block_size = unpack(4, "I")
-            block_data = f.read(block_size)
 
             # History tree - decompress LZMA
             if block_type == 0x07:
                 try:
-                    result[str(block_type)] = lzma.decompress(block_data).decode(
-                        "utf-8", errors="ignore"
-                    )
+                    result[str(block_type)] = lzma.decompress(
+                        f.read(block_size)
+                    ).decode("utf-8", errors="ignore")
                 except:
                     pass
 
             # History node - extract and decompress
             elif block_type == 0x0B:
-                node_index = struct.unpack(">I", block_data[0:4])[0]
+                node_index = unpack(4, "I")
+                node_data = f.read(block_size - 4)
 
                 if "11" not in result.keys():
                     result["11"] = {}
 
                 # Find XZ signature and decompress
-                xz_pos = block_data.find(b"\xfd7zXZ\x00")
+                xz_pos = node_data.find(b"\xfd7zXZ\x00")
+                print(f"Found XZ signature at {xz_pos} byte!")
                 if xz_pos != -1:
                     try:
-                        decompressed = lzma.decompress(block_data[xz_pos:])
-                        result["11"][f"{node_index}"] = process_node(decompressed)
+                        decompressed = lzma.decompress(node_data[xz_pos:])
+                        result["11"][f"{node_index}"] = parse_node(decompressed)
                     except:
                         pass
 
             # Other blocks
             else:
-                result[str(block_type)] = decode_block(block_data)
+                result[str(block_type)] = decode_block(f.read(block_size))
 
     return result
 
@@ -172,7 +173,7 @@ def decode_block(data):
 def main(filepath, output_file=None):
     """Parse SnapGene file and save as JSON"""
 
-    result = parse_snapgene(filepath)
+    result = parse_sgff(filepath)
 
     if output_file:
         with open(output_file, "w") as f:
