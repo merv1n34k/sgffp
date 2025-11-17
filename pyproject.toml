@@ -1,0 +1,14 @@
+[project]
+name = "snapgene-converter"
+version = "0.1.0"
+description = "Reader and writer scripts for SnapGene file formats"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "biopython>=1.86",
+    "html2text>=2025.4.15",
+    "matplotlib>=3.10.7",
+    "numpy>=2.3.4",
+    "pandas>=2.3.3",
+    "xmltodict>=1.0.2",
+]
