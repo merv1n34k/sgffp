@@ -50,14 +50,14 @@ def parse_sgff(filepath):
             # 8: additional sequence properties:xml
             # 9: file Description:?
             # 10: features:xml
-            # 11: history node:lzma compressed:1.gzip zrt-trace file + 2.xml
+            # 11: history node:lzma compressed:sgff content
             # 12:
-            # 13: legacy?:binary
+            # 13: bottom signature:?
             # 14: enzyme_custom:xml
             # 15:
-            # 16: alignable sequence:binary
-            # 17: alignable sequence:xml
-            # 18: sequence trace:?
+            # 16: legacy trace: 4 empty bytes
+            # 17: alignable sequences:xml
+            # 18: sequence trace:zrt-trace
             # 19: uracil Positions:?
             # 20: custom colors:xml
             # 21: sequence_protein:utf-8
@@ -115,48 +115,65 @@ def parse_sgff(filepath):
 
 # THIS DOES NOT PARSE ZRT FILE BUT SHOULD: see ZRT spec
 # https://staden.sourceforge.net/ztr.html
-def process_node(data):
-    """Extract XML content from node"""
+def parse_ztr(data):
+    """Placeholder for ZTR parsing"""
+    # TODO: Implement ZTR parsing
+    return f"ZTR data ({len(data)} bytes)"
 
-    # If has CLIP marker, extract XML after it
-    if b"CLIP" in data:
-        clip_pos = data.find(b"CLIP")
-        # Find first '<' after CLIP
-        for i in range(clip_pos, min(clip_pos + 100, len(data))):
-            if data[i : i + 1] == b"<":
-                return data[i:].decode("utf-8", errors="ignore")
 
-    # If starts with XML, return as is
+def parse_node(data):
+    """Parse decompressed node content - either XML or TLV blocks"""
+
+    # If starts with XML, return directly
     if data[:5] == b"<?xml":
         return data.decode("utf-8", errors="ignore")
 
-    # Try TLV parsing
-    if len(data) > 5:
-        tlv = parse_tlv(data)
-        if tlv:
-            return tlv
-
-    return data.hex()
-
-
-def parse_tlv(data):
-    """Parse TLV structure"""
-
+    # Parse as TLV blocks
     result = {}
     offset = 0
+    block_counter = {}  # Track count for each block type
 
     while offset + 5 <= len(data):
         block_type = data[offset]
         block_size = struct.unpack(">I", data[offset + 1 : offset + 5])[0]
+        print(f"found {block_type} with {block_size} bytes")
 
-        if block_size > len(data) - offset - 5 or block_size > 1000000:
+        if block_size > len(data) - offset - 5:
             break
 
+        # Track block occurrence
+        if block_type not in block_counter:
+            block_counter[block_type] = 0
+        block_counter[block_type] += 1
+
+        # Create two-byte key: counter + type
+        key = f"{block_type}.{block_counter[block_type]}"
+
+        # Special handling for different block types
+        if block_type == 16:  # 0x10 - legacy type - skip
+            offset += 5 + 4
+            continue
+
         block_data = data[offset + 5 : offset + 5 + block_size]
-        result[str(block_type)] = decode_block(block_data)
+
+        if block_type == 18:  # 0x12 - ZTR trace data
+            result[key] = parse_ztr(block_data)
+
+        else:
+            # Try to decode as string
+            try:
+                result[key] = block_data.decode("utf-8", errors="strict")
+            except:
+                if b"<?xml" in block_data[:100] or (
+                    block_data and block_data[0:1] == b"<"
+                ):
+                    result[key] = block_data.decode("utf-8", errors="ignore")
+                else:
+                    result[key] = block_data.hex()
+
         offset += 5 + block_size
 
-    return result if result else None
+    return result if result else data.hex()
 
 
 def decode_block(data):
