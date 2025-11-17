@@ -1,4 +1,4 @@
-# Snapgene reader
+# SnapGene File Format Converter
 
 This is a reversed engineered parser for SnapGene file formats (SGFF in short) - for dna, rna and protein.
 
@@ -7,11 +7,11 @@ Currently parser partially do it's job, the result is a JSON dictionary.
 Ideally this project will create a set of writer and reader scripts with the following scheme:
 
 ```mermaid
-graph LR
-    A[SGFF] ---> B[Reader]
-    B ---> C[JSON]
-    C ---> D[Writer]
-    D ---> E[SGFF]
+graph LR;
+    A[SGFF] ---> B[Reader];
+    B ---> C[JSON];
+    C ---> D[Writer];
+    D ---> E[SGFF];
 ```
 
 ## ImHex pattern parser
@@ -20,9 +20,9 @@ The project also has a pattern parser for ImHex: `snapgene.hexpat`, you may use 
 
 ## File structure
 
-The file is a Type-Length-Value format, which is also partially compress it's block (e.g. history node/tree) with LZMA. (see documentation in the acknowledgment section)
+The file is a Type-Length-Value format, which also partially has compressed blocks (e.g. history node/tree) with LZMA. (see documentation in the acknowledgment section for some insights)
 
-Currently it looks like this:
+Currently file structure looks like this:
 
 ```bash
 # file structure table
@@ -55,7 +55,7 @@ Currently it looks like this:
 # 26:
 # 27: unknown:binary
 # 28: enzyme_vizualisation:xml
-# 29
+# 29:
 # 30:
 # 31:
 # 32: sequence_rna:utf-8
@@ -63,7 +63,7 @@ Currently it looks like this:
 
 ## Install
 
-This project uses uv, which automatically handles `venv` and packages.
+This project uses `uv`, which automatically handles `venv` and packages.
 
 ```bash
 
@@ -75,7 +75,7 @@ uv run main.py # or history_analysis.py
 ## Roadmap
 
 - [ ] Understand whole file structure
-- [ ] Correctly parse into readably form every block
+- [ ] Correctly parse into readable form every block
 - [ ] Parse XML into pure JSON format
 - [ ] Create writer (if possible)
 - [ ] Refine, refactor reader/writer
@@ -85,7 +85,7 @@ uv run main.py # or history_analysis.py
 
 This project would not have been possible without previous work done by
 - Damien Goutte-Gattat, see his PDF on SGFF structure: https://incenp.org/dvlpt/docs/binary-sequence-formats/binary-sequence-formats.pdf
-- Isaac Luo, see this project on snapgene reader: https://github.com/IsaacLuo/SnapGeneFileReader
+- Isaac Luo, for his version of SnapGene reader: https://github.com/IsaacLuo/SnapGeneFileReader
 
 # License
 

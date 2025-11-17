@@ -10,4 +10,3 @@ wheels/
 .venv
 
 legacy/*
-data/*
