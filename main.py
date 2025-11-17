@@ -6,6 +6,7 @@ Parse SnapGeneFileFormat file to JSON
 import struct
 import json
 import lzma
+import zlib
 import sys
 
 
@@ -115,9 +116,72 @@ def parse_sgff(filepath):
 # THIS DOES NOT PARSE ZRT FILE BUT SHOULD: see ZRT spec
 # https://staden.sourceforge.net/ztr.html
 def parse_ztr(data):
-    """Placeholder for ZTR parsing"""
-    # TODO: Implement ZTR parsing
-    return f"ZTR data ({len(data)} bytes)"
+    """Parse ZTR chromatogram format"""
+
+    # Check ZTR magic
+    if len(data) < 10 or data[:8] != b"\xaeZTR\r\n\x1a\n":
+        return f"Invalid ZTR ({len(data)} bytes)"
+
+    result = {}
+    offset = 10
+
+    while offset + 12 <= len(data):
+        # Read chunk header
+        chunk_type = data[offset : offset + 4].decode("ascii", errors="ignore").strip()
+        meta_len = struct.unpack(">I", data[offset + 4 : offset + 8])[0]
+        offset += 8 + meta_len
+
+        if offset + 4 > len(data):
+            break
+
+        data_len = struct.unpack(">I", data[offset : offset + 4])[0]
+        offset += 4
+
+        if offset + data_len > len(data):
+            break
+
+        chunk_data = data[offset : offset + data_len]
+
+        # Decompress if needed (format byte != 0)
+        if chunk_data and chunk_data[0] == 2:  # zlib
+            try:
+                chunk_data = b"\x00" + zlib.decompress(chunk_data[5:])
+            except:
+                pass
+
+        # Parse chunk based on type
+        if chunk_type == "BASE" and chunk_data[0] == 0:
+            result["BASE"] = chunk_data[2:].decode("ascii", errors="ignore")
+        elif chunk_type == "TEXT" and chunk_data[0] == 0:
+            items = chunk_data[2:-2].split(b"\x00")
+            text = {}
+            for i in range(0, len(items) - 1, 2):
+                text[items[i].decode("ascii", errors="ignore")] = items[i + 1].decode(
+                    "ascii", errors="ignore"
+                )
+            result["TEXT"] = text
+        elif chunk_type == "SMP4":
+            trace_len = len(data) // 8
+
+            samples = {}
+            for i, base in enumerate(["A", "C", "G", "T"]):
+                start = i * trace_len * 2
+                trace = [
+                    struct.unpack(">H", data[start + j : start + j + 2])[0]
+                    for j in range(0, trace_len * 2, 2)
+                ]
+                samples[base] = trace
+
+            result["SMP4"] = samples
+        elif chunk_type == "CLIP" and len(chunk_data) >= 9:
+            result["CLIP"] = {
+                "left": struct.unpack(">I", chunk_data[1:5])[0],
+                "right": struct.unpack(">I", chunk_data[5:9])[0],
+            }
+
+        offset += data_len
+
+    return result
 
 
 def parse_node(data):
