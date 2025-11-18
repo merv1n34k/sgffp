@@ -105,12 +105,43 @@ def parse_sgff(filepath):
                         result["11"][f"{node_index}"] = parse_node(decompressed)
                     except:
                         pass
+            elif block_type == 0x03:  # Enzyme cutters
+                result[str(block_type)] = parse_enzyme_block(f.read(block_size))
 
             # Other blocks
             else:
                 result[str(block_type)] = decode_block(f.read(block_size))
 
     return result
+
+
+def parse_enzyme_block(data):
+    """Parse block type 3 - enzyme cutter sequences"""
+
+    # Check for sub-header (type should be 1)
+    if len(data) < 5 or data[0] != 1:
+        return data.hex()
+
+    # Get length from sub-header
+    sub_length = struct.unpack(">I", data[1:5])[0]
+    print(f"{sub_length}")
+
+    # Extract CSV sequences
+    if len(data) < 5 + sub_length:
+        return data.hex()
+
+    csv_data = data[5 : 5 + sub_length]
+    sequences = csv_data.decode("ascii", errors="ignore").split(",")
+
+    # Parse remaining 4-byte values
+    values = []
+    offset = 5 + sub_length
+    while offset + 4 <= len(data):
+        val = struct.unpack(">I", data[offset : offset + 4])[0]
+        values.append(val)
+        offset += 4
+
+    return {"sequences": sequences, "values": values}
 
 
 # THIS DOES NOT PARSE ZRT FILE BUT SHOULD: see ZRT spec
@@ -220,7 +251,6 @@ def parse_node(data):
 
         if block_type == 18:  # 0x12 - ZTR trace data
             result[key] = parse_ztr(block_data)
-
         else:
             # Try to decode as string
             try:
