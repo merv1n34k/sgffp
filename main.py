@@ -43,7 +43,7 @@ def parse_sgff(filepath):
             # 0: sequence_dna:utf-8
             # 1: compressed sequence:?
             # 2:
-            # 3:
+            # 3: enzyme_library:mixed
             # 4:
             # 5: primers:xml
             # 6: notes:xml
@@ -53,12 +53,12 @@ def parse_sgff(filepath):
             # 10: features:xml
             # 11: history node:lzma compressed:sgff content
             # 12:
-            # 13: bottom signature:?
+            # 13: enzyme_info:mixed
             # 14: enzyme_custom:xml
             # 15:
-            # 16: legacy trace: 4 empty bytes
+            # 16: sequence trace(legacy): 4 empty bytes
             # 17: alignable sequences:xml
-            # 18: sequence trace:zrt-trace
+            # 18: sequence trace:zrt-trace format
             # 19: uracil Positions:?
             # 20: custom colors:xml
             # 21: sequence_protein:utf-8

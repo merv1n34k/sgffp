@@ -18,8 +18,7 @@ enum BlockType : u8 {
     SEQ_RNA = 0x20,
     SEQ_PROT = 0x15,
     COMPRESSED_SEQ = 0x01,
-    UNKNOWN_2 = 0x02,
-    UNKNOWN_3 = 0x03,
+    ENZ_LIBR = 0x03,
     PRIMERS = 0x05,
     NOTES = 0x06,
     HISTORY_TREE = 0x07,
@@ -27,7 +26,7 @@ enum BlockType : u8 {
     FILE_DESCRIPTION = 0x09,
     FEATURES = 0x0A,
     HISTORY_NODE = 0x0B,
-    UNKNOWN_13 = 0x0D,
+    ENZ_SET_INFO = 0x0D,
     SEQ_TRACE_LEGACY = 0x10,
     ALIGN_SEQ_17 = 0x11,
     SEQ_TRACE = 0x12,
@@ -82,6 +81,7 @@ fn get_block_name(BlockType type) {
     if (type == BlockType::SEQ_DNA) return "DNA Sequence";
     if (type == BlockType::SEQ_RNA) return "RNA Sequence";
     if (type == BlockType::SEQ_PROT) return "Protein Sequence";
+    if (type == BlockType::ENZ_LIBR) return "Enzyme Library";
     if (type == BlockType::COMPRESSED_SEQ) return "Compressed sequence";
     if (type == BlockType::PRIMERS) return "Primers";
     if (type == BlockType::NOTES) return "Notes";
@@ -95,8 +95,9 @@ fn get_block_name(BlockType type) {
     if (type == BlockType::SEQ_TRACE) return "Sequence Trace (ZTR)";
     if (type == BlockType::URACIL_POSITIONS) return "Uracil Positions";
     if (type == BlockType::CUSTOM_COLORS) return "Custom Colors";
-    if (type == BlockType::ENZ_VIZ) return "Enzyme vizualisation";
-    if (type == BlockType::ENZ_CUST) return "Custom enzymes";
+    if (type == BlockType::ENZ_SET_INFO) return "Enzyme Set Info";
+    if (type == BlockType::ENZ_VIZ) return "Enzyme Vizualisation";
+    if (type == BlockType::ENZ_CUST) return "Custom Enzymes";
     return std::format("Unknown (0x{:02X})", u8(type));
 };
 
