@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Parse SnapGeneFileFormat file to JSON
+Parse SnapGeneFileFormat (SGFF) file to JSON
 """
 
 import struct
@@ -11,7 +11,7 @@ import sys
 
 
 def parse_sgff(filepath):
-    """Parse SnapGene file format to JSON structure"""
+    """Parse SGFF to JSON structure"""
 
     with open(filepath, "rb") as f:
 
@@ -40,10 +40,10 @@ def parse_sgff(filepath):
         # Parse blocks
         while True:
             # file structure table
-            # 0: sequence_dna:utf-8
-            # 1: compressed sequence:?
+            # 0: sequence_dna:ascii
+            # 1: compressed sequence:WHICH COMPRESSOR?!
             # 2:
-            # 3: enzyme_library:mixed
+            # 3: enzyme_library:mixed (enzyme sites + id?)
             # 4:
             # 5: primers:xml
             # 6: notes:xml
@@ -51,7 +51,7 @@ def parse_sgff(filepath):
             # 8: additional sequence properties:xml
             # 9: file Description:?
             # 10: features:xml
-            # 11: history node:lzma compressed:sgff content
+            # 11: history_node:tlv container for ((0/1/32)+30)/29
             # 12:
             # 13: enzyme_info:mixed
             # 14: enzyme_custom:xml
@@ -59,8 +59,8 @@ def parse_sgff(filepath):
             # 16: sequence trace(legacy): 4 empty bytes
             # 17: alignable sequences:xml
             # 18: sequence trace:zrt-trace format
-            # 19: uracil Positions:?
-            # 20: custom colors:xml
+            # 19: uracil_positions:?
+            # 20: custom_colors:xml
             # 21: sequence_protein:utf-8
             # 22:
             # 23:
@@ -69,10 +69,10 @@ def parse_sgff(filepath):
             # 26:
             # 27: unknown:binary
             # 28: enzyme_vizualisation:xml
-            # 29
-            # 30:
+            # 29: history_modifier:lzma
+            # 30: history_content:lzma (content from file it was taken, except for sequence)
             # 31:
-            # 32: sequence_rna:utf-8
+            # 32: sequence_rna:ascii
             type_byte = f.read(1)
             if not type_byte:
                 break
@@ -144,8 +144,7 @@ def parse_enzyme_block(data):
     return {"sequences": sequences, "values": values}
 
 
-# THIS DOES NOT PARSE ZRT FILE BUT SHOULD: see ZRT spec
-# https://staden.sourceforge.net/ztr.html
+# See https://staden.sourceforge.net/ztr.html
 def parse_ztr(data):
     """Parse ZTR chromatogram format"""
 
