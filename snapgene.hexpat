@@ -66,8 +66,12 @@ struct Block {
     BlockType type [[color("FF8800")]];
     u32 dataSize [[color("0088FF")]];
 
-    // Check if contains LZMA signature
-    u8 data[dataSize];
+    // Block type 3 should only take 4 bytes of data
+    if (type == BlockType::SEQ_TRACE_LEGACY) {
+        u8 data[4];  // Only read 4 bytes
+    } else {
+        u8 data[dataSize];
+    }
 } [[format("format_block")]];
 
 // Format function for nice display
@@ -97,7 +101,7 @@ fn get_block_name(BlockType type) {
     if (type == BlockType::CUSTOM_COLORS) return "Custom Colors";
     if (type == BlockType::ENZ_SET_INFO) return "Enzyme Set Info";
     if (type == BlockType::ENZ_VIZ) return "Enzyme Vizualisation";
-    if (type == BlockType::ENZ_CUST) return "Custom Enzymes";
+    if (type == BlockType::ENZ_CUST) return "Enzyme Custom";
     return std::format("Unknown (0x{:02X})", u8(type));
 };
 
