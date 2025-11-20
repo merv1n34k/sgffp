@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Parse SnapGeneFileFormat (SGFF) file to JSON
+Parse SnapGeneFileFormat (SGFF) file to JSON using recursive TLV parsing
 """
 
 import struct
@@ -10,145 +10,181 @@ import zlib
 import sys
 
 
+def unpack(fileobject, size, mode):
+    return struct.unpack(">" + mode, fileobject.read(size))[0]
+
+
+def read_header(fileobject):
+    """Read TLV block header: 1 byte type + 4 bytes length"""
+    type_byte = fileobject.read(1)
+    if not type_byte:
+        return None, None
+
+    block_type = type_byte[0]
+    block_length = unpack(fileobject, 4, "I")
+
+    return block_type, block_length
+
+
 def parse_sgff(filepath):
-    """Parse SGFF to JSON structure"""
-
+    """Parse SGFF into JSON"""
     with open(filepath, "rb") as f:
-
-        def unpack(size, mode):
-            return struct.unpack(">" + mode, f.read(size))[0]
-
         # Validate header
         if f.read(1) != b"\t":
             raise ValueError("Wrong format for a SnapGene file!")
 
-        length = unpack(4, "I")
+        length = struct.unpack(">I", f.read(4))[0]
         title = f.read(8).decode("ascii")
 
         if length != 14 or title != "SnapGene":
             raise ValueError("Wrong format for a SnapGene file!")
 
+        # Parse cookie
         result = {
             "cookie": {
                 "magic": title,
-                "type_of_sequence": unpack(2, "H"),
-                "export_version": unpack(2, "H"),
-                "import_version": unpack(2, "H"),
+                "type_of_sequence": struct.unpack(">H", f.read(2))[0],
+                "export_version": struct.unpack(">H", f.read(2))[0],
+                "import_version": struct.unpack(">H", f.read(2))[0],
             }
         }
 
-        # Parse blocks
+        # file structure table
+        # 0: sequence_dna:ascii
+        # 1: compressed sequence:WHICH COMPRESSOR?!
+        # 2:
+        # 3: enzyme_library:mixed (enzyme sites + id?)
+        # 4:
+        # 5: primers:xml
+        # 6: notes:xml
+        # 7: history tree:xml
+        # 8: additional sequence properties:xml
+        # 9: file Description:?
+        # 10: features:xml
+        # 11: history_node:tlv container for ((0/1/32)+30)/29
+        # 12:
+        # 13: enzyme_info:mixed
+        # 14: enzyme_custom:xml
+        # 15:
+        # 16: sequence trace(legacy): 4 empty bytes
+        # 17: alignable sequences:xml
+        # 18: sequence trace:zrt-trace format
+        # 19: uracil_positions:?
+        # 20: custom_colors:xml
+        # 21: sequence_protein:utf-8
+        # 22:
+        # 23:
+        # 24:
+        # 25:
+        # 26:
+        # 27: unknown:binary
+        # 28: enzyme_vizualisation:xml
+        # 29: history_modifier:lzma
+        # 30: history_content:lzma (content from file it was taken, except for sequence)
+        # 31:
+        # 32: sequence_rna:ascii
+
+        # Define main parsing scheme
+        scheme = {
+            0: parse_sequence,  # DNA sequence
+            1: None,  # Compressed sequence - skip
+            2: None,  # Unknown binary - skip
+            3: parse_enzyme_cutter,  # Enzyme cutters - skip
+            4: None,  # Unknown binary - skip
+            5: parse_xml,  # Primers XML
+            6: parse_xml,  # Notes XML
+            7: parse_lzma,  # History tree (LZMA compressed XML)
+            8: parse_xml,  # Additional sequence properties XML
+            9: None,  # File description - skip
+            10: parse_xml,  # Features XML
+            11: None,  # History node (nested blocks) - skip for now
+            12: None,  # Unknown binary - skip
+            13: None,  # Enzyme info - skip
+            14: parse_xml,  # Enzyme custom XML
+            15: None,  # Unknown binary - skip
+            16: (4, None),  # Legacy trace - read 4 bytes, skip
+            17: parse_xml,  # Alignable sequences XML
+            18: parse_ztr,  # Sequence trace ZTR
+            19: None,  # Uracil positions - skip
+            20: None,  # parse_xml,  # Custom colors XML
+            21: parse_sequence,  # Protein sequence
+            22: None,  # Unknown binary - skip
+            23: None,  # Unknown binary - skip
+            24: None,  # Unknown binary - skip
+            25: None,  # Unknown binary - skip
+            26: None,  # Unknown binary - skip
+            27: None,  # Unknown binary - skip
+            28: parse_xml,  # Enzyme visualization XML
+            29: None,  # parse_lzma,  # History modifier (LZMA)
+            30: None,  # parse_lzma,  # History content (LZMA)
+            31: None,  # Unknown binary - skip
+            32: parse_sequence,  # RNA sequence
+        }
+
+        # Parse all blocks in file using scheme
         while True:
-            # file structure table
-            # 0: sequence_dna:ascii
-            # 1: compressed sequence:WHICH COMPRESSOR?!
-            # 2:
-            # 3: enzyme_library:mixed (enzyme sites + id?)
-            # 4:
-            # 5: primers:xml
-            # 6: notes:xml
-            # 7: history tree:xml
-            # 8: additional sequence properties:xml
-            # 9: file Description:?
-            # 10: features:xml
-            # 11: history_node:tlv container for ((0/1/32)+30)/29
-            # 12:
-            # 13: enzyme_info:mixed
-            # 14: enzyme_custom:xml
-            # 15:
-            # 16: sequence trace(legacy): 4 empty bytes
-            # 17: alignable sequences:xml
-            # 18: sequence trace:zrt-trace format
-            # 19: uracil_positions:?
-            # 20: custom_colors:xml
-            # 21: sequence_protein:utf-8
-            # 22:
-            # 23:
-            # 24:
-            # 25:
-            # 26:
-            # 27: unknown:binary
-            # 28: enzyme_vizualisation:xml
-            # 29: history_modifier:lzma
-            # 30: history_content:lzma (content from file it was taken, except for sequence)
-            # 31:
-            # 32: sequence_rna:ascii
-            type_byte = f.read(1)
-            if not type_byte:
+            block_type, block_length = read_header(f)
+            if block_type is None:
                 break
 
-            block_type = type_byte[0]
-            block_size = unpack(4, "I")
+            # Get parser from scheme (default to skip if not defined)
+            block_scheme = scheme.get(block_type)
 
-            # History tree - decompress LZMA
-            if block_type == 0x07:
-                try:
-                    result[str(block_type)] = lzma.decompress(
-                        f.read(block_size)
-                    ).decode("utf-8", errors="ignore")
-                except:
-                    pass
-
-            # History node - extract and decompress
-            elif block_type == 0x0B:
-                node_index = unpack(4, "I")
-                node_data = f.read(block_size - 4)
-
-                if "11" not in result.keys():
-                    result["11"] = {}
-
-                # Find XZ signature and decompress
-                xz_pos = node_data.find(b"\xfd7zXZ\x00")
-                if xz_pos != -1:
-                    try:
-                        decompressed = lzma.decompress(node_data[xz_pos:])
-                        result["11"][f"{node_index}"] = parse_node(decompressed)
-                    except:
-                        pass
-            elif block_type == 0x03:  # Enzyme cutters
-                result[str(block_type)] = parse_enzyme_block(f.read(block_size))
-
-            # Other blocks
+            # Handle different scheme formats
+            if block_scheme is None:
+                # Block type not in scheme - skip it
+                f.read(block_length)
+                continue
+            elif type(block_scheme) is tuple:
+                # Tuple format: (length_override, parser)
+                block_length = block_scheme[0]
+                block_parser = block_scheme[1]
             else:
-                result[str(block_type)] = decode_block(f.read(block_size))
+                # Direct parser function
+                block_parser = block_scheme
 
-    return result
+            # Read block data
+            data = f.read(block_length)
+
+            # If parser is None, skip this block
+            if block_parser is None:
+                continue
+
+            # Parse and store result
+            result[str(block_type)] = block_parser(data)
+
+        return result
 
 
-def parse_enzyme_block(data):
-    """Parse block type 3 - enzyme cutter sequences"""
+# === SPECIFIC PARSERS ===
 
-    # Check for sub-header (type should be 1)
-    if len(data) < 5 or data[0] != 1:
+
+def parse_xml(data):
+    """Parse XML as UTF-8 text"""
+    try:
+        return data.decode("utf-8", errors="ignore")
+    except:
         return data.hex()
 
-    # Get length from sub-header
-    sub_length = struct.unpack(">I", data[1:5])[0]
-    print(f"{sub_length}")
 
-    # Extract CSV sequences
-    if len(data) < 5 + sub_length:
+def parse_sequence(data):
+    """Parse as UTF-8 text, fallback to hex"""
+    try:
+        return data[1:].decode("utf-8", errors="strict")
+    except:
         return data.hex()
 
-    csv_data = data[5 : 5 + sub_length]
-    sequences = csv_data.decode("ascii", errors="ignore").split(",")
 
-    # Parse remaining 4-byte values
-    values = []
-    offset = 5 + sub_length
-    while offset + 4 <= len(data):
-        val = struct.unpack(">I", data[offset : offset + 4])[0]
-        values.append(val)
-        offset += 4
-
-    return {"sequences": sequences, "values": values}
+def parse_lzma(data):
+    """Parse LZMA compressed data as text"""
+    try:
+        return lzma.decompress(data).decode("utf-8", errors="ignore")
+    except:
+        return data.hex()
 
 
-# See https://staden.sourceforge.net/ztr.html
 def parse_ztr(data):
     """Parse ZTR chromatogram format"""
-
-    # Check ZTR magic
     if len(data) < 10 or data[:8] != b"\xaeZTR\r\n\x1a\n":
         return f"Invalid ZTR ({len(data)} bytes)"
 
@@ -172,36 +208,34 @@ def parse_ztr(data):
 
         chunk_data = data[offset : offset + data_len]
 
-        # Decompress if needed (format byte != 0)
-        if chunk_data and chunk_data[0] == 2:  # zlib
+        # Decompress if zlib compressed
+        if chunk_data and chunk_data[0] == 2:
             try:
                 chunk_data = b"\x00" + zlib.decompress(chunk_data[5:])
             except:
                 pass
 
-        # Parse chunk based on type
+        # Parse specific chunk types
         if chunk_type == "BASE" and chunk_data[0] == 0:
             result["BASE"] = chunk_data[2:].decode("ascii", errors="ignore")
         elif chunk_type == "TEXT" and chunk_data[0] == 0:
             items = chunk_data[2:-2].split(b"\x00")
             text = {}
             for i in range(0, len(items) - 1, 2):
-                text[items[i].decode("ascii", errors="ignore")] = items[i + 1].decode(
-                    "ascii", errors="ignore"
-                )
+                key = items[i].decode("ascii", errors="ignore")
+                val = items[i + 1].decode("ascii", errors="ignore")
+                text[key] = val
             result["TEXT"] = text
         elif chunk_type == "SMP4":
-            trace_len = len(data) // 8
-
+            trace_len = len(chunk_data) // 8
             samples = {}
             for i, base in enumerate(["A", "C", "G", "T"]):
                 start = i * trace_len * 2
                 trace = [
-                    struct.unpack(">H", data[start + j : start + j + 2])[0]
+                    struct.unpack(">H", chunk_data[start + j : start + j + 2])[0]
                     for j in range(0, trace_len * 2, 2)
                 ]
                 samples[base] = trace
-
             result["SMP4"] = samples
         elif chunk_type == "CLIP" and len(chunk_data) >= 9:
             result["CLIP"] = {
@@ -214,68 +248,29 @@ def parse_ztr(data):
     return result
 
 
-def parse_node(data):
-    """Parse decompressed node content - either XML or TLV blocks"""
-
-    # If starts with XML, return directly
-    if data[:5] == b"<?xml":
-        return data.decode("utf-8", errors="ignore")
-
-    # Parse as TLV blocks
-    result = {}
-    offset = 0
-    block_counter = {}  # Track count for each block type
-
-    while offset + 5 <= len(data):
-        block_type = data[offset]
-        block_size = struct.unpack(">I", data[offset + 1 : offset + 5])[0]
-
-        if block_size > len(data) - offset - 5:
-            break
-
-        # Track block occurrence
-        if block_type not in block_counter:
-            block_counter[block_type] = 0
-        block_counter[block_type] += 1
-
-        # Create two-byte key: counter + type
-        key = f"{block_type}.{block_counter[block_type]}"
-
-        # Special handling for different block types
-        if block_type == 16:  # 0x10 - legacy type - skip
-            offset += 5 + 4
-            continue
-
-        block_data = data[offset + 5 : offset + 5 + block_size]
-
-        if block_type == 18:  # 0x12 - ZTR trace data
-            result[key] = parse_ztr(block_data)
-        else:
-            # Try to decode as string
-            try:
-                result[key] = block_data.decode("utf-8", errors="strict")
-            except:
-                if b"<?xml" in block_data[:100] or (
-                    block_data and block_data[0:1] == b"<"
-                ):
-                    result[key] = block_data.decode("utf-8", errors="ignore")
-                else:
-                    result[key] = block_data.hex()
-
-        offset += 5 + block_size
-
-    return result if result else data.hex()
-
-
-def decode_block(data):
-    """Decode block data to string or hex"""
-
-    try:
-        return data.decode("utf-8", errors="strict")
-    except:
-        if b"<?xml" in data[:100]:
-            return data.decode("utf-8", errors="ignore")
+def parse_enzyme_cutter(data):
+    """Parse enzyme cutter sequences (type 3)"""
+    if len(data) < 5 or data[0] != 1:
         return data.hex()
+
+    # Read CSV length
+    csv_length = struct.unpack(">I", data[1:5])[0]
+    if len(data) < 5 + csv_length:
+        return data.hex()
+
+    # Parse CSV sequences
+    csv_data = data[5 : 5 + csv_length]
+    sequences = csv_data.decode("ascii", errors="ignore").split(",")
+
+    # Parse remaining 4-byte values
+    values = []
+    offset = 5 + csv_length
+    while offset + 4 <= len(data):
+        val = struct.unpack(">I", data[offset : offset + 4])[0]
+        values.append(val)
+        offset += 4
+
+    return {"sequences": sequences, "values": values}
 
 
 def main(filepath, output_file=None):
