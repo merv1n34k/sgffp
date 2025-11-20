@@ -114,27 +114,33 @@ def parse_node_structure(filepath):
             data = block["data"]
             node_index = struct.unpack(">I", data[0:4])[0]
 
-            # if node_index == 3:
-            #    continue
-
-            # print(f"Node {node_index}: {len(data)} bytes")
+            print(f"node:{node_index} - length:{len(data)}")
 
             offset = 4  # After node index
 
             # Sequence type (0=dna, 1=compressed, 32=rna, 21=protein)
             seq_type = data[offset]
             offset += 1
-            print(f"type  : {seq_type}")
+            # print(f"type  : {seq_type}")
+            if seq_type == 29:
+                continue
 
             # Sequence length
             seq_length = struct.unpack(">I", data[offset : offset + 4])[0]
             offset += 4
-            print(f"length:{seq_length}")
+            print(f"type:{seq_type} - length:{seq_length}")
+            seq_type2 = data[offset]
+            offset += 0
+            seq_length2 = struct.unpack(">I", data[offset : offset + 4])[0]
+            offset += 0
+            print(f"type:{seq_type2} - length:{seq_length2}")
 
             # Extract sequence
             sequence_data = data[offset : offset + seq_length]
-            print(f"seq   :{sequence_data[12:15].hex()}")
-            offset += seq_length
+            print(
+                f"seq:{' '.join(sequence_data[i : i + 4].hex() for i in range(0, 30, 4))}"
+            )
+            offset += seq_length + 4
 
             if seq_type == 0:
                 print(
@@ -157,7 +163,7 @@ def parse_node_structure(filepath):
                 # print(f"  Compressed info length: {info_length}")
 
                 # XZ data follows
-                # print(f"  XZ data at offset {offset}")
+                # print(f"XZ offset {offset}")
                 if data[offset : offset + 6] == b"\xfd7zXZ\x00":
                     try:
                         xz_data = lzma.decompress(data[offset:])
@@ -165,8 +171,6 @@ def parse_node_structure(filepath):
                     except:
                         pass
                         # print(f"  XZ decompression failed")
-
-            print()
 
 
 def main(filepath):
