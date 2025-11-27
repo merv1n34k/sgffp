@@ -27,7 +27,7 @@ Currently file structure looks like this:
 ```bash
 # file structure table
 # 0: sequence_dna:ascii
-# 1: compressed sequence:WHICH COMPRESSOR?!
+# 1: compressed sequence:complex structure (2bpb format)
 # 2:
 # 3: enzyme_library:mixed (enzyme sites + id?)
 # 4:

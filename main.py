@@ -8,183 +8,274 @@ import json
 import lzma
 import zlib
 import sys
+from io import BytesIO
 
 
-def unpack(fileobject, size, mode):
-    return struct.unpack(">" + mode, fileobject.read(size))[0]
+# =============================================================================
+# SECTION 1: COMMON FUNCTIONS
+# =============================================================================
 
 
-def read_header(fileobject):
+def read_header(stream):
     """Read TLV block header: 1 byte type + 4 bytes length"""
-    type_byte = fileobject.read(1)
+    type_byte = stream.read(1)
     if not type_byte:
         return None, None
 
     block_type = type_byte[0]
-    block_length = unpack(fileobject, 4, "I")
+    block_length = struct.unpack(">I", stream.read(4))[0]
 
     return block_type, block_length
 
 
-def parse_sgff(filepath):
-    """Parse SGFF into JSON"""
-    with open(filepath, "rb") as f:
-        # Validate header
-        if f.read(1) != b"\t":
-            raise ValueError("Wrong format for a SnapGene file!")
+def parse_blocks(stream):
+    """Generic TLV block parser - parses multiple blocks from stream using SCHEME"""
+    result = {}
+    block_counters = {}  # Track how many times each block type is repeated
 
-        length = struct.unpack(">I", f.read(4))[0]
-        title = f.read(8).decode("ascii")
+    while True:
+        block_type, block_length = read_header(stream)
+        if block_type is None:
+            break
 
-        if length != 14 or title != "SnapGene":
-            raise ValueError("Wrong format for a SnapGene file!")
+        # Get scheme for this block type (default to (None, None) for unknown types)
+        length_override, parser = SCHEME.get(block_type, (None, None))
 
-        # Parse cookie
-        result = {
-            "cookie": {
-                "magic": title,
-                "type_of_sequence": struct.unpack(">H", f.read(2))[0],
-                "export_version": struct.unpack(">H", f.read(2))[0],
-                "import_version": struct.unpack(">H", f.read(2))[0],
-            }
-        }
+        # Apply length override BEFORE reading data
+        if length_override is not None:
+            block_length = length_override
 
-        # file structure table
-        # 0: sequence_dna:ascii
-        # 1: compressed sequence:WHICH COMPRESSOR?!
-        # 2:
-        # 3: enzyme_library:mixed (enzyme sites + id?)
-        # 4:
-        # 5: primers:xml
-        # 6: notes:xml
-        # 7: history tree:xml
-        # 8: additional sequence properties:xml
-        # 9: file Description:?
-        # 10: features:xml
-        # 11: history_node:tlv container for ((0/1/32)+30)/29
-        # 12:
-        # 13: enzyme_info:mixed
-        # 14: enzyme_custom:xml
-        # 15:
-        # 16: sequence trace(legacy): 4 empty bytes
-        # 17: alignable sequences:xml
-        # 18: sequence trace:zrt-trace format
-        # 19: uracil_positions:?
-        # 20: custom_colors:xml
-        # 21: sequence_protein:utf-8
-        # 22:
-        # 23:
-        # 24:
-        # 25:
-        # 26:
-        # 27: unknown:binary
-        # 28: enzyme_vizualisation:xml
-        # 29: history_modifier:lzma
-        # 30: history_content:lzma (content from file it was taken, except for sequence)
-        # 31:
-        # 32: sequence_rna:ascii
+        # Read block data
+        data = stream.read(block_length)
 
-        # Define main parsing scheme
-        scheme = {
-            0: parse_sequence,  # DNA sequence
-            1: None,  # Compressed sequence - skip
-            2: None,  # Unknown binary - skip
-            3: parse_enzyme_cutter,  # Enzyme cutters - skip
-            4: None,  # Unknown binary - skip
-            5: parse_xml,  # Primers XML
-            6: parse_xml,  # Notes XML
-            7: parse_lzma,  # History tree (LZMA compressed XML)
-            8: parse_xml,  # Additional sequence properties XML
-            9: None,  # File description - skip
-            10: parse_xml,  # Features XML
-            11: None,  # History node (nested blocks) - skip for now
-            12: None,  # Unknown binary - skip
-            13: None,  # Enzyme info - skip
-            14: parse_xml,  # Enzyme custom XML
-            15: None,  # Unknown binary - skip
-            16: (4, None),  # Legacy trace - read 4 bytes, skip
-            17: parse_xml,  # Alignable sequences XML
-            18: parse_ztr,  # Sequence trace ZTR
-            19: None,  # Uracil positions - skip
-            20: None,  # parse_xml,  # Custom colors XML
-            21: parse_sequence,  # Protein sequence
-            22: None,  # Unknown binary - skip
-            23: None,  # Unknown binary - skip
-            24: None,  # Unknown binary - skip
-            25: None,  # Unknown binary - skip
-            26: None,  # Unknown binary - skip
-            27: None,  # Unknown binary - skip
-            28: parse_xml,  # Enzyme visualization XML
-            29: None,  # parse_lzma,  # History modifier (LZMA)
-            30: None,  # parse_lzma,  # History content (LZMA)
-            31: None,  # Unknown binary - skip
-            32: parse_sequence,  # RNA sequence
-        }
+        # Parse and store if parser exists and returns non-None
+        if parser is not None:
+            parsed_data = parser(data)
+            if parsed_data is not None:
+                block_key = str(block_type)
 
-        # Parse all blocks in file using scheme
-        while True:
-            block_type, block_length = read_header(f)
-            if block_type is None:
-                break
+                # Handle repeated blocks with .1, .2, .3 etc suffixes
+                if block_key in result:
+                    # Block already exists - add numbered suffix
+                    if block_key not in block_counters:
+                        block_counters[block_key] = 1  # First repeat
+                    else:
+                        block_counters[block_key] += 1
 
-            # Get parser from scheme (default to skip if not defined)
-            block_scheme = scheme.get(block_type)
+                    block_key = f"{block_key}.{block_counters[block_key]}"
 
-            # Handle different scheme formats
-            if block_scheme is None:
-                # Block type not in scheme - skip it
-                f.read(block_length)
-                continue
-            elif type(block_scheme) is tuple:
-                # Tuple format: (length_override, parser)
-                block_length = block_scheme[0]
-                block_parser = block_scheme[1]
-            else:
-                # Direct parser function
-                block_parser = block_scheme
+                result[block_key] = parsed_data
 
-            # Read block data
-            data = f.read(block_length)
-
-            # If parser is None, skip this block
-            if block_parser is None:
-                continue
-
-            # Parse and store result
-            result[str(block_type)] = block_parser(data)
-
-        return result
+    return result
 
 
-# === SPECIFIC PARSERS ===
-
-
-def parse_xml(data):
-    """Parse XML as UTF-8 text"""
+def decode_xml(data):
+    """Decode data as UTF-8 XML text"""
     try:
         return data.decode("utf-8", errors="ignore")
     except:
         return data.hex()
 
 
-def parse_sequence(data):
-    """Parse as UTF-8 text, fallback to hex"""
+def decode_lzma(data):
+    """Decompress LZMA data and decode as UTF-8"""
+    try:
+        decompressed = lzma.decompress(data)
+        return decompressed.decode("utf-8", errors="ignore")
+    except:
+        return data.hex()
+
+
+def octet_to_dna(raw_data, base_count):
+    """Convert 2-bit encoded DNA (GATC) to ASCII"""
+    bases = b"GATC"
+    result = bytearray()
+
+    for byte in raw_data:
+        for shift in [6, 4, 2, 0]:
+            if len(result) < base_count:
+                result.append(bases[(byte >> shift) & 3])
+            else:
+                break
+        if len(result) >= base_count:
+            break
+
+    return bytes(result[:base_count])
+
+
+# =============================================================================
+# SECTION 2: BLOCK TYPE PARSERS
+# =============================================================================
+
+
+def parse_block_0(data):
+    """Type 0: DNA sequence (uncompressed ASCII)"""
     try:
         return data[1:].decode("utf-8", errors="strict")
     except:
         return data.hex()
 
 
-def parse_lzma(data):
-    """Parse LZMA compressed data as text"""
-    try:
-        return lzma.decompress(data).decode("utf-8", errors="ignore")
-    except:
+def parse_block_1(data):
+    """Type 1: Compressed DNA sequence"""
+    node = {}
+    offset = 0
+
+    # Parse compression header (12 bytes total)
+    compressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
+    offset += 4
+
+    uncompressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
+    offset += 4
+
+    # TODO: INVESTIGATE - 4 bytes unknown flag/property
+    # Possible meanings: topology, edit flags, quality markers
+    offset += 4
+
+    node["compressed_length"] = compressed_length
+    node["uncompressed_length"] = uncompressed_length
+
+    # TODO: INVESTIGATE - 10 bytes unknown header data
+    # Structure: 1B + 4B + 1B + 4B (always: 01 + flag + 01 + length_repeat)
+    offset += 10
+
+    # Extract and decode compressed DNA sequence
+    total_bytes_needed = (uncompressed_length * 2 + 7) // 8
+    seq_data = data[offset : offset + total_bytes_needed]
+    node["sequence"] = octet_to_dna(seq_data, uncompressed_length).decode("ascii")
+
+    return node
+
+
+def parse_block_3(data):
+    """Type 3: Enzyme cutters"""
+    if len(data) < 5 or data[0] != 1:
         return data.hex()
 
+    csv_length = struct.unpack(">I", data[1:5])[0]
+    if len(data) < 5 + csv_length:
+        return data.hex()
 
-def parse_ztr(data):
-    """Parse ZTR chromatogram format"""
+    csv_data = data[5 : 5 + csv_length]
+    sequences = csv_data.decode("ascii", errors="ignore").split(",")
+
+    # values = []
+    # offset = 5 + csv_length
+    # while offset + 4 <= len(data):
+    #    val = struct.unpack(">I", data[offset : offset + 4])[0]
+    #    values.append(val)
+    #    offset += 4
+
+    return {"sequences": sequences}  # , "values": values}
+
+
+def parse_block_5(data):
+    """Type 5: Primers XML"""
+    return decode_xml(data)
+
+
+def parse_block_6(data):
+    """Type 6: Notes XML"""
+    return decode_xml(data)
+
+
+def parse_block_7(data):
+    """Type 7: History tree (LZMA compressed XML)"""
+    return decode_lzma(data)
+
+
+def parse_block_8(data):
+    """Type 8: Additional sequence properties XML"""
+    return decode_xml(data)
+
+
+def parse_block_10(data):
+    """Type 10: Features XML"""
+    return decode_xml(data)
+
+
+def parse_block_11(data):
+    """Type 11: History node - organizes data and calls other parsers"""
+    node = {}
+    offset = 0
+
+    # Parse node index (4 bytes)
+    node["node_index"] = struct.unpack(">I", data[offset : offset + 4])[0]
+    offset += 4
+
+    # Parse sequence type (1 byte)
+    seq_type = data[offset]
+    node["sequence_type"] = seq_type
+    offset += 1
+
+    # Type 29: Modifier only (no sequence data, just type 0x1E block)
+    if seq_type == 29:
+        if offset < len(data):
+            # Create stream and parse remaining blocks
+            stream = BytesIO(data[offset:])
+            nested = parse_blocks(stream)
+            if nested:
+                node["node_info"] = nested
+        return node
+
+    # Type 1: Compressed DNA
+    if seq_type == 1:
+        # Read compressed_length to know where block 1 ends
+        compressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
+        compressed_data_start = offset + 4
+
+        # Extract block 1 data and parse it
+        block_1_data = data[offset : compressed_data_start + compressed_length]
+        compressed_result = parse_block_1(block_1_data)
+        if compressed_result:
+            node.update(compressed_result)
+
+        # Move offset to after compressed section
+        offset = compressed_data_start + compressed_length
+
+    # Types 0, 21, 32: Uncompressed sequences
+    elif seq_type in [0, 21, 32]:
+        seq_length = struct.unpack(">I", data[offset : offset + 4])[0]
+        offset += 4
+
+        # Extract sequence data and parse using appropriate parser
+        seq_data_with_type = bytes([seq_type]) + data[offset - 4 : offset + seq_length]
+
+        if seq_type == 0:
+            result = parse_block_0(seq_data_with_type)
+        elif seq_type == 21:
+            result = parse_block_21(seq_data_with_type)
+        elif seq_type == 32:
+            result = parse_block_32(seq_data_with_type)
+
+        if result:
+            node["sequence"] = result
+            node["sequence_length"] = seq_length
+
+        offset += seq_length
+
+    # Parse remaining blocks (typically type 0x1E with LZMA data)
+    if offset < len(data):
+        stream = BytesIO(data[offset:])
+        nested = parse_blocks(stream)
+        if nested:
+            node["node_info"] = nested
+
+    return node
+
+
+def parse_block_14(data):
+    """Type 14: Enzyme custom XML"""
+    return decode_xml(data)
+
+
+def parse_block_17(data):
+    """Type 17: Alignable sequences XML"""
+    return decode_xml(data)
+
+
+def parse_block_18(data):
+    """Type 18: Sequence trace (ZTR format)"""
     if len(data) < 10 or data[:8] != b"\xaeZTR\r\n\x1a\n":
         return f"Invalid ZTR ({len(data)} bytes)"
 
@@ -192,7 +283,6 @@ def parse_ztr(data):
     offset = 10
 
     while offset + 12 <= len(data):
-        # Read chunk header
         chunk_type = data[offset : offset + 4].decode("ascii", errors="ignore").strip()
         meta_len = struct.unpack(">I", data[offset + 4 : offset + 8])[0]
         offset += 8 + meta_len
@@ -248,34 +338,121 @@ def parse_ztr(data):
     return result
 
 
-def parse_enzyme_cutter(data):
-    """Parse enzyme cutter sequences (type 3)"""
-    if len(data) < 5 or data[0] != 1:
+def parse_block_21(data):
+    """Type 21: Protein sequence (uncompressed ASCII)"""
+    try:
+        return data[1:].decode("utf-8", errors="strict")
+    except:
         return data.hex()
 
-    # Read CSV length
-    csv_length = struct.unpack(">I", data[1:5])[0]
-    if len(data) < 5 + csv_length:
+
+def parse_block_28(data):
+    """Type 28: Enzyme visualization XML"""
+    return decode_xml(data)
+
+
+def parse_block_29(data):
+    """Type 29: History modifier (LZMA compressed XML)"""
+    return decode_lzma(data)
+
+
+def parse_block_30(data):
+    """Type 30: History content (LZMA compressed, contains nested TLV blocks)"""
+    try:
+        decompressed = lzma.decompress(data)
+        stream = BytesIO(decompressed)
+        return parse_blocks(stream)
+    except:
         return data.hex()
 
-    # Parse CSV sequences
-    csv_data = data[5 : 5 + csv_length]
-    sequences = csv_data.decode("ascii", errors="ignore").split(",")
 
-    # Parse remaining 4-byte values
-    values = []
-    offset = 5 + csv_length
-    while offset + 4 <= len(data):
-        val = struct.unpack(">I", data[offset : offset + 4])[0]
-        values.append(val)
-        offset += 4
+def parse_block_32(data):
+    """Type 32: RNA sequence (uncompressed ASCII)"""
+    try:
+        return data[1:].decode("utf-8", errors="strict")
+    except:
+        return data.hex()
 
-    return {"sequences": sequences, "values": values}
+
+# =============================================================================
+# GLOBAL SCHEME
+# =============================================================================
+
+# Define parsing scheme: block_type -> (length_override, parser_function)
+SCHEME = {
+    0: (None, parse_block_0),
+    1: (None, parse_block_1),
+    2: (None, None),  # Unknown - skip
+    3: (None, parse_block_3),
+    4: (None, None),  # Unknown - skip
+    5: (None, parse_block_5),
+    6: (None, parse_block_6),
+    7: (None, parse_block_7),
+    8: (None, parse_block_8),
+    9: (None, None),  # File description (legacy) - skip
+    10: (None, parse_block_10),
+    11: (None, parse_block_11),
+    12: (None, None),  # Unknown - skip
+    13: (None, None),  # Enzyme info - skip
+    14: (None, parse_block_14),
+    15: (None, None),  # Unknown - skip
+    16: (4, None),  # Legacy trace: always 4 bytes - skip
+    17: (None, parse_block_17),
+    18: (None, parse_block_18),
+    19: (None, None),  # Uracil positions - skip
+    20: (None, None),  # Custom colors XML - skip
+    21: (None, parse_block_21),
+    22: (None, None),  # Unknown - skip
+    23: (None, None),  # Unknown - skip
+    24: (None, None),  # Unknown - skip
+    25: (None, None),  # Unknown - skip
+    26: (None, None),  # Unknown - skip
+    27: (None, None),  # Unknown - skip
+    28: (None, parse_block_28),
+    29: (None, parse_block_29),
+    30: (None, parse_block_30),
+    31: (None, None),  # Unknown - skip
+    32: (None, parse_block_32),
+}
+
+
+# =============================================================================
+# SECTION 3: MAIN PARSING FUNCTIONS
+# =============================================================================
+
+
+def parse_sgff(filepath):
+    """Parse SGFF file into JSON-serializable dictionary"""
+    with open(filepath, "rb") as f:
+        # Validate header
+        if f.read(1) != b"\t":
+            raise ValueError("Wrong format for a SnapGene file!")
+
+        length = struct.unpack(">I", f.read(4))[0]
+        title = f.read(8).decode("ascii")
+
+        if length != 14 or title != "SnapGene":
+            raise ValueError("Wrong format for a SnapGene file!")
+
+        # Parse cookie
+        result = {
+            "cookie": {
+                "magic": title,
+                "type_of_sequence": struct.unpack(">H", f.read(2))[0],
+                "export_version": struct.unpack(">H", f.read(2))[0],
+                "import_version": struct.unpack(">H", f.read(2))[0],
+            }
+        }
+
+        # Parse all blocks using generic parse_blocks function
+        blocks = parse_blocks(f)
+        result.update(blocks)
+
+        return result
 
 
 def main(filepath, output_file=None):
     """Parse SnapGene file and save as JSON"""
-
     result = parse_sgff(filepath)
 
     if output_file:
