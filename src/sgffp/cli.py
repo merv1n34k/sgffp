@@ -6,11 +6,15 @@ Command-line interface for SGFF tools
 import sys
 import json
 import argparse
-from pathlib import Path
+import struct
 
 from .reader import SgffReader
 from .writer import SgffWriter
 from .internal import SgffObject
+
+
+# Blocks that are unknown or not yet decoded
+NEW_BLOCKS = [2, 3, 4, 9, 12, 15, 19, 20, 22, 23, 24, 25, 26, 27, 31]
 
 
 def cmd_parse(args):
@@ -71,6 +75,59 @@ def cmd_filter(args):
     print(f"Filtered file written to {args.output}")
 
 
+def cmd_check(args):
+    """Check for unknown/new block types"""
+
+    # Read file and scan for blocks
+    found_blocks = {}
+    new_found = []
+
+    with open(args.input, "rb") as f:
+        # Skip header
+        f.read(1 + 4 + 8)  # magic + length + title
+        f.read(2 + 2 + 2)  # cookie
+
+        # Read all blocks
+        while True:
+            type_byte = f.read(1)
+            if not type_byte:
+                break
+
+            block_type = type_byte[0]
+            block_length = struct.unpack(">I", f.read(4))[0]
+            block_data = f.read(block_length)
+
+            # Track all found blocks
+            if block_type not in found_blocks:
+                found_blocks[block_type] = []
+            found_blocks[block_type].append(block_data)
+
+            # Check if this is a new/unknown block
+            if block_type in NEW_BLOCKS:
+                if block_type not in new_found:
+                    new_found.append(block_type)
+
+    # Report findings
+    for block_type in sorted(found_blocks.keys()):
+        count = len(found_blocks[block_type])
+        marker = "[NEW]" if block_type in NEW_BLOCKS else ""
+        print(f"{block_type:>2}: {count:>2} {marker}")
+
+    # Alert if new blocks found
+    if new_found:
+        print()
+        if args.examine:
+            for block_type in sorted(new_found):
+                for block_data in found_blocks[block_type]:
+                    print("NEW BLOCK!")
+                    print(f"Type: {block_type}, Length: {len(block_data)}")
+                    print(block_data.hex())
+                    print()
+        else:
+            print("NEW BLOCK!")
+            print(f"Types: {sorted(new_found)}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="SnapGene File Format tools")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
@@ -85,6 +142,16 @@ def main():
     # Info command
     info_parser = subparsers.add_parser("info", help="Show file information")
     info_parser.add_argument("input", help="Input SGFF file")
+
+    # Check command
+    check_parser = subparsers.add_parser("check", help="Check for unknown block types")
+    check_parser.add_argument("input", help="Input SGFF file")
+    check_parser.add_argument(
+        "-e",
+        "--examine",
+        action="store_true",
+        help="Dump raw content of new/unknown blocks",
+    )
 
     # Filter command
     filter_parser = subparsers.add_parser("filter", help="Filter blocks")
@@ -104,6 +171,8 @@ def main():
         cmd_parse(args)
     elif args.command == "info":
         cmd_info(args)
+    elif args.command == "check":
+        cmd_check(args)
     elif args.command == "filter":
         cmd_filter(args)
 

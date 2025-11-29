@@ -1,8 +1,9 @@
 [project]
-name = "snapgene-converter"
-version = "0.1.0"
-description = "Reader and writer scripts for SnapGene file formats"
+name = "sgffp"
+version = "1.0.2"
+description = "SnapGene File Format Parser"
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.12"
 dependencies = [
     "biopython>=1.86",
@@ -12,3 +13,10 @@ dependencies = [
     "pandas>=2.3.3",
     "xmltodict>=1.0.2",
 ]
+
+[project.scripts]
+sff = "sgffp.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
