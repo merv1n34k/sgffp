@@ -1,10 +1,12 @@
 # SnapGene File Format Converter
 
-This is a reversed engineered parser for SnapGene file formats (SGFF in short) - for dna, rna and protein.
+This is a reverse-engineered parser for SnapGene file formats (SGFF for short) - for DNA, RNA, and protein. See installation instructions below.
 
-Currently parser partially do it's job, the result is a JSON dictionary, and also a minimalistic writer.
+> [!Important]
+> HELP WANTED
+> I have tried to decode as many different SnapGene blocks as I can, but surely something must be missing. This is why I ask you to check your SnapGene file with `sgffp check <your_snapgene_file>` to see which blocks your file has. If you have a new, unknown block type it will notify you with `New block detected!` Please open an issue and, if possible, either attach your file or dump the output of the block with the `--examine/-e` flag, i.e. `sgff check <your_snapgene_file> -e 1> block.dump`. Let's make parsing SnapGene files better together!
 
-Ideally this project will create a set of writer and reader classes with the following scheme:
+Currently the parser partially does its job, producing a JSON dictionary as the result, as well as a minimalistic writer. The project aims to be a minimalistic, fast, and useful tool for molecular biologists who happen to get stuck with a large library of SnapGene files that need to be parsed, or for developers who want to create a smooth user experience with SnapGene. Currently the following scheme is implemented:
 
 ```mermaid
 graph TB
@@ -42,11 +44,6 @@ graph TB
     CLI --> Writer
     API --> Reader
     API --> Writer
-
-    style Internal fill:#e1f5ff
-    style Reader fill:#fff3e0
-    style Writer fill:#fff3e0
-    style Parsers fill:#f3e5f5
 ```
 
 
@@ -67,9 +64,9 @@ For detailed file format specifications, see the acknowledgments section.
 |----|------------------------------|------------------|---------|
 | 0  | DNA Sequence                 | UFT-8            | Yes     |
 | 1  | Compressed DNA               | 2-bit encoding   | Yes     |
-| 2  | Unknown                      | Binary           | No      |
+| 2  | Unknown                      | Unknown          | No      |
 | 3  | Enzyme Cutters               | Mixed            | No      |
-| 4  | Unknown                      | Binary           | No      |
+| 4  | Unknown                      | Unknown          | No      |
 | 5  | Primers                      | XML              | Yes     |
 | 6  | Notes                        | XML              | Yes     |
 | 7  | History Tree                 | LZMA + XML       | Yes     |
@@ -77,26 +74,26 @@ For detailed file format specifications, see the acknowledgments section.
 | 9  | File Description (Legacy)    | Unknown          | No      |
 | 10 | Features                     | XML              | Yes     |
 | 11 | History Nodes                | Nested TLV       | Yes     |
-| 12 | Unknown                      | Binary           | No      |
-| 13 | Enzyme Info                  | Binary            | No      |
+| 12 | Unknown                      | Unknown          | No      |
+| 13 | Enzyme Info                  | Binary           | No      |
 | 14 | Custom Enzymes               | XML              | Yes     |
-| 15 | Unknown                      | Binary           | No      |
+| 15 | Unknown                      | Unknown          | No      |
 | 16 | Sequence Trace (Legacy)      | 4 empty bytes    | No      |
 | 17 | Alignable Sequences          | XML              | Yes     |
 | 18 | Sequence Trace               | ZTR format       | No      |
 | 19 | Uracil Positions             | Unknown          | No      |
 | 20 | Custom Colors                | XML              | No      |
 | 21 | Protein Sequence             | UTF-8            | Yes     |
-| 22 | Unknown                      | Binary           | No      |
-| 23 | Unknown                      | Binary           | No      |
-| 24 | Unknown                      | Binary           | No      |
-| 25 | Unknown                      | Binary           | No      |
-| 26 | Unknown                      | Binary           | No      |
-| 27 | Unknown                      | Binary           | No      |
+| 22 | Unknown                      | Unknown          | No      |
+| 23 | Unknown                      | Unknown          | No      |
+| 24 | Unknown                      | Unknown          | No      |
+| 25 | Unknown                      | Unknown          | No      |
+| 26 | Unknown                      | Unknown          | No      |
+| 27 | Unknown                      | Unknown          | No      |
 | 28 | Enzyme Visualization         | XML              | Yes     |
 | 29 | History Modifier             | LZMA + XML       | Yes     |
 | 30 | History Content              | LZMA + Nested    | Yes     |
-| 31 | Unknown                      | Binary           | No      |
+| 31 | Unknown                      | Unknown          | No      |
 | 32 | RNA Sequence                 | UFT-8            | Yes     |
 
 
@@ -119,11 +116,9 @@ For detailed file format specifications, see the acknowledgments section.
 | 29 | History Modifier (XML)        | Yes  | No    |
 | 30 | History Content (Nested)      | Yes  | No    |
 | 32 | RNA Sequence                  | Yes  | Yes    |
+
+
 *Please note current parser does not properly implemented, in it's current form it is useless for end-user, consider waiting for final release.
----
-
-## Project Architecture
-
 
 ## Install
 
