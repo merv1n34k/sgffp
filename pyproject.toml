@@ -1,6 +1,6 @@
 [project]
 name = "sgffp"
-version = "1.0.2"
+version = "0.5.16"
 description = "SnapGene File Format Parser"
 readme = "README.md"
 license = {text = "MIT"}

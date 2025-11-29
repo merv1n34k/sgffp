@@ -49,6 +49,21 @@ graph TB
     API --> Writer
 ```
 
+## Install
+
+Currently this project requires cloning the repository first and do the install.
+
+The project use `uv`, which automatically handles `venv` and packages.
+
+```bash
+# to sync project:
+uv sync
+
+# to run cli tool:
+uv run sff
+
+```
+
 
 ## File Format Overview
 
@@ -123,22 +138,8 @@ For detailed file format specifications, see the acknowledgments section.
 | 32 | RNA Sequence                  | Yes  | Yes    |
 
 
-*Please note current parser does not properly implemented, in it's current form it is useless for end-user, consider waiting for final release.
+*Please note current parser does not properly implemented, in it's current form it is useless for end-user, consider waiting for stable 1.0.0 release.
 
-## Install
-
-Currently this project requires cloning the repository first and do the install.
-
-The project use `uv`, which automatically handles `venv` and packages.
-
-```bash
-# to sync project:
-uv sync
-
-# to run cli tool:
-uv run sff y
-
-```
 
 ## Roadmap
 
@@ -146,7 +147,7 @@ uv run sff y
 - [X] Understand whole file structure
 - [X] Correctly parse into readable from *almost* every block
 - [ ] Parse XML into pure JSON format
-- [-] Parse and decode missing blocks and pieces (skipped - YAGNI)
+- [X] Parse and decode missing blocks and pieces (skipped - YAGNI)
 - [X] Create writer
 - [ ] Implement minimal working condition for reader and writer
 - [ ] Refine, refactor reader/writer
@@ -155,8 +156,8 @@ uv run sff y
 ## Acknowledgments
 
 This project would not have been possible without previous work done by
-- Damien Goutte-Gattat, see his PDF on SGFF structure: https://incenp.org/dvlpt/docs/binary-sequence-formats/binary-sequence-formats.pdf
-- Isaac Luo, for his version of SnapGene reader: https://github.com/IsaacLuo/SnapGeneFileReader
+- **Damien Goutte-Gattat**, see his PDF on SGFF structure: https://incenp.org/dvlpt/docs/binary-sequence-formats/binary-sequence-formats.pdf
+- **Isaac Luo**, for his version of SnapGene reader: https://github.com/IsaacLuo/SnapGeneFileReader
 
 ## License
 

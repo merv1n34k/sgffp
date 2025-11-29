@@ -514,7 +514,7 @@ wheels = [
 
 [[package]]
 name = "sgffp"
-version = "1.0.2"
+version = "0.5.16"
 source = { editable = "." }
 dependencies = [
     { name = "biopython" },
