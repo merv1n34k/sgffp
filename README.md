@@ -2,8 +2,8 @@
 
 SnapGene File Format Parser (SGFFP for short) is a reverse-engineered parser for SnapGene DNA, RNA, and protein file formats.
 
-> [!Important] HELP WANTED
-> I have tried to decode as many different SnapGene blocks as I can, but surely something must be missing. This is why I ask you to check your SnapGene file with `uv run sff check <your_snapgene_file>` to see which blocks your file has. If you have a new, unknown block type it will notify you with `New block detected!` Please open an issue and, if possible, either attach your file or dump the output of the block with the `--examine/-e` flag, i.e. `uv run sff check <your_snapgene_file> -e 1> block.dump`. Let's make parsing SnapGene files better together!
+> [!Important]
+> Hey! I have tried to decode as many different SnapGene blocks as I can, but surely something must be missing. This is why I ask you to check your SnapGene file(s) with `uv run sff check <your_snapgene_file>` to see which blocks your file has. If you have a new, unknown block type it will notify you with `[NEW] flag` Please open an issue and, if possible, either attach your file or dump the output of the block with the `--examine/-e` flag, i.e. `uv run sff check <your_snapgene_file> -e 1> block.dump`. Let's make parsing SnapGene files better together!
 
 Currently the parser partially does its job, producing a JSON dictionary as the result, as well as a minimalistic writer.
 
@@ -100,7 +100,7 @@ For detailed file format specifications, see the acknowledgments section.
 | 32 | RNA Sequence                 | UFT-8            | Yes     |
 
 
-*Marked block types are not decoded, but most likely won't be in the future, as they are internal SnapGene data and should not affect your important data. These block won't be read or written by the parser
+*Marked block types are not decoded, but most likely won't be in the future, as they are internal SnapGene data and should not affect your important data. These block won't be read or written by the parser.
 
 ## Supported Block Types
 
