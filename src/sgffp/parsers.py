@@ -1,50 +1,50 @@
-# src/parsers.py
 """
 Block type parsers and parsing scheme
 """
 
 import struct
 import lzma
+import zlib
 from io import BytesIO
-from typing import Dict, Tuple, Optional, Callable, Any
+from typing import Dict, Tuple, Optional, Callable, Any, List
+
+import xmltodict
 
 
-# Forward declaration for recursive parsing
-def parse_blocks(stream) -> Dict[str, Any]:
-    """Parse multiple TLV blocks from stream"""
-    result = {}
-    block_counters = {}
+def parse_blocks(stream) -> Dict[int, List[Any]]:
+    """Parse multiple TLV blocks from stream into {type: [values]}"""
+    result: Dict[int, List[Any]] = {}
 
     while True:
         block_type, block_length = read_header(stream)
         if block_type is None:
             break
 
-        length_override, parser = SCHEME.get(block_type, (None, None))
+        # Skip unknown blocks
+        if block_type not in SCHEME:
+            stream.read(block_length)
+            continue
+
+        length_override, parser = SCHEME[block_type]
 
         if length_override is not None:
             block_length = length_override
 
         data = stream.read(block_length)
 
-        if parser is not None:
-            parsed_data = parser(data)
-            if parsed_data is not None:
-                block_key = str(block_type)
+        if parser is None:
+            continue
 
-                if block_key in result:
-                    if block_key not in block_counters:
-                        block_counters[block_key] = 1
-                    else:
-                        block_counters[block_key] += 1
-                    block_key = f"{block_key}.{block_counters[block_key]}"
-
-                result[block_key] = parsed_data
+        parsed = parser(data)
+        if parsed is not None:
+            if block_type not in result:
+                result[block_type] = []
+            result[block_type].append(parsed)
 
     return result
 
 
-def read_header(stream):
+def read_header(stream) -> Tuple[Optional[int], Optional[int]]:
     """Read TLV header: 1 byte type + 4 bytes length"""
     type_byte = stream.read(1)
     if not type_byte:
@@ -63,19 +63,40 @@ def octet_to_dna(raw_data: bytes, base_count: int) -> bytes:
     return bytes(result[:base_count])
 
 
-# Block parsers (simplified implementations)
-def parse_dna_sequence(data):
-    """Type 0, 21, 32: Uncompressed sequence"""
-    return data[1:].decode("utf-8", errors="ignore")
+# =============================================================================
+# SEQUENCE PARSERS
+# =============================================================================
 
 
-def parse_compressed_dna(data):
-    """Type 1: Compressed DNA sequence"""
+def parse_sequence(data: bytes) -> Dict[str, Any]:
+    """Type 0, 21, 32: Uncompressed sequence with properties"""
+    props = data[0]
+    sequence = data[1:].decode("utf-8", errors="ignore")
+
+    return {
+        "sequence": sequence,
+        "length": len(sequence),
+        "topology": "circular" if props & 0x01 else "linear",
+        "strandedness": "double" if props & 0x02 else "single",
+        "dam_methylated": bool(props & 0x04),
+        "dcm_methylated": bool(props & 0x08),
+        "ecoki_methylated": bool(props & 0x10),
+    }
+
+
+def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
+    """Type 1: Compressed DNA sequence with mystery bytes preserved"""
     offset = 0
+
     compressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
     offset += 4
+
     uncompressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
-    offset += 4 + 4 + 10  # Skip mystery fields
+    offset += 4
+
+    # Mystery bytes (14 bytes) - preserve for round-trip
+    mystery = data[offset : offset + 10]
+    offset += 14
 
     total_bytes = (uncompressed_length * 2 + 7) // 8
     seq_data = data[offset : offset + total_bytes]
@@ -83,23 +104,34 @@ def parse_compressed_dna(data):
     return {
         "sequence": octet_to_dna(seq_data, uncompressed_length).decode("ascii"),
         "length": uncompressed_length,
+        "mystery": mystery,
     }
 
 
-def parse_xml(data):
-    """Parse XML blocks"""
-    return data.decode("utf-8", errors="ignore")
+# =============================================================================
+# XML PARSERS
+# =============================================================================
 
 
-def parse_lzma_xml(data):
-    """Parse LZMA-compressed XML"""
+def parse_xml(data: bytes) -> Optional[Dict]:
+    """Parse XML blocks into dict"""
     try:
-        return lzma.decompress(data).decode("utf-8", errors="ignore")
+        xml_str = data.decode("utf-8", errors="ignore")
+        return xmltodict.parse(xml_str)
     except:
         return None
 
 
-def parse_lzma_nested(data):
+def parse_lzma_xml(data: bytes) -> Optional[Dict]:
+    """Parse LZMA-compressed XML into dict"""
+    try:
+        decompressed = lzma.decompress(data)
+        return xmltodict.parse(decompressed.decode("utf-8", errors="ignore"))
+    except:
+        return None
+
+
+def parse_lzma_nested(data: bytes) -> Optional[Dict[int, List[Any]]]:
     """Type 30: LZMA with nested TLV blocks"""
     try:
         decompressed = lzma.decompress(data)
@@ -108,7 +140,179 @@ def parse_lzma_nested(data):
         return None
 
 
-def parse_history_node(data):
+# =============================================================================
+# FEATURE PARSER
+# =============================================================================
+
+STRAND_MAP = {"0": ".", "1": "+", "2": "-", "3": "="}
+
+
+def parse_features(data: bytes) -> Optional[Dict]:
+    """Type 10: Features with full qualifier extraction"""
+    parsed = parse_xml(data)
+    if not parsed or "Features" not in parsed:
+        return parsed
+
+    features_data = parsed["Features"].get("Feature", [])
+    if not isinstance(features_data, list):
+        features_data = [features_data]
+
+    features = []
+    for feature in features_data:
+        segments = feature.get("Segment", [])
+        if not isinstance(segments, list):
+            segments = [segments]
+
+        # Parse segment ranges
+        ranges = []
+        for seg in segments:
+            if "@range" in seg:
+                r = sorted(int(x) for x in seg["@range"].split("-"))
+                ranges.append(r)
+
+        # Parse qualifiers
+        qualifiers = _parse_qualifiers(feature.get("Q", []))
+
+        # Defaults
+        if "label" not in qualifiers:
+            qualifiers["label"] = feature.get("@name", "")
+
+        color = segments[0].get("@color", "") if segments else ""
+
+        features.append(
+            {
+                "name": feature.get("@name", ""),
+                "type": feature.get("@type", ""),
+                "strand": STRAND_MAP.get(feature.get("@directionality", "0"), "."),
+                "start": min(r[0] - 1 for r in ranges) if ranges else 0,
+                "end": max(r[1] for r in ranges) if ranges else 0,
+                "color": color,
+                "segments": segments,
+                "qualifiers": qualifiers,
+            }
+        )
+
+    return {"features": features}
+
+
+def _parse_qualifiers(quals: Any) -> Dict[str, Any]:
+    """Extract qualifiers from feature"""
+    if not quals:
+        return {}
+    if not isinstance(quals, list):
+        quals = [quals]
+
+    result = {}
+    for q in quals:
+        name = q.get("@name", "")
+        val = q.get("V")
+
+        if val is None:
+            continue
+        elif isinstance(val, dict):
+            # Single value
+            result[name] = _extract_value(val)
+        elif isinstance(val, list):
+            result[name] = [_extract_value(v) for v in val]
+        else:
+            result[name] = val
+
+    return result
+
+
+def _extract_value(v: Dict) -> Any:
+    """Extract typed value from qualifier"""
+    if "@text" in v:
+        return v["@text"]
+    if "@int" in v:
+        return int(v["@int"])
+    # Return first value found
+    for key, val in v.items():
+        if key.startswith("@"):
+            return val
+    return v
+
+
+# =============================================================================
+# ZTR PARSER
+# =============================================================================
+
+ZTR_MAGIC = b"\xaeZTR\r\n\x1a\n"
+
+
+def parse_ztr(data: bytes) -> Optional[Dict[str, Any]]:
+    """Type 18: Sequence trace (ZTR format)"""
+    if len(data) < 10 or data[:8] != ZTR_MAGIC:
+        return None
+
+    result = {}
+    offset = 10
+
+    while offset + 12 <= len(data):
+        chunk_type = data[offset : offset + 4].decode("ascii", errors="ignore").strip()
+        meta_len = struct.unpack(">I", data[offset + 4 : offset + 8])[0]
+        offset += 8 + meta_len
+
+        if offset + 4 > len(data):
+            break
+
+        data_len = struct.unpack(">I", data[offset : offset + 4])[0]
+        offset += 4
+
+        if offset + data_len > len(data):
+            break
+
+        chunk_data = data[offset : offset + data_len]
+
+        # Decompress if zlib compressed
+        if chunk_data and chunk_data[0] == 2:
+            try:
+                chunk_data = b"\x00" + zlib.decompress(chunk_data[5:])
+            except:
+                pass
+
+        # Parse chunks
+        if chunk_type == "BASE" and chunk_data and chunk_data[0] == 0:
+            result["bases"] = chunk_data[2:].decode("ascii", errors="ignore")
+
+        elif chunk_type == "TEXT" and chunk_data and chunk_data[0] == 0:
+            items = chunk_data[2:-2].split(b"\x00")
+            text = {}
+            for i in range(0, len(items) - 1, 2):
+                key = items[i].decode("ascii", errors="ignore")
+                val = items[i + 1].decode("ascii", errors="ignore")
+                text[key] = val
+            result["text"] = text
+
+        elif chunk_type == "SMP4":
+            trace_len = len(chunk_data) // 8
+            samples = {}
+            for i, base in enumerate(["A", "C", "G", "T"]):
+                start = i * trace_len * 2
+                trace = [
+                    struct.unpack(">H", chunk_data[start + j : start + j + 2])[0]
+                    for j in range(0, trace_len * 2, 2)
+                ]
+                samples[base] = trace
+            result["samples"] = samples
+
+        elif chunk_type == "CLIP" and len(chunk_data) >= 9:
+            result["clip"] = {
+                "left": struct.unpack(">I", chunk_data[1:5])[0],
+                "right": struct.unpack(">I", chunk_data[5:9])[0],
+            }
+
+        offset += data_len
+
+    return result if result else None
+
+
+# =============================================================================
+# HISTORY NODE PARSER
+# =============================================================================
+
+
+def parse_history_node(data: bytes) -> Dict[str, Any]:
     """Type 11: History node - delegates to other parsers"""
     node = {}
     offset = 0
@@ -159,22 +363,26 @@ def parse_history_node(data):
     return node
 
 
-# Global parsing scheme: (length_override, parser_function)
+# =============================================================================
+# PARSING SCHEME
+# =============================================================================
+
+# Format: block_type -> (length_override, parser_function)
+# Only known blocks are included - unknown blocks are skipped
 SCHEME: Dict[int, Tuple[Optional[int], Optional[Callable]]] = {
-    0: (None, parse_dna_sequence),
-    1: (None, parse_compressed_dna),
-    5: (None, parse_xml),
-    6: (None, parse_xml),
-    7: (None, parse_lzma_xml),
-    8: (None, parse_xml),
-    10: (None, parse_xml),
-    11: (None, parse_history_node),
-    14: (None, parse_xml),
-    16: (4, None),  # Legacy trace - skip
-    17: (None, parse_xml),
-    21: (None, parse_dna_sequence),
-    28: (None, parse_xml),
-    29: (None, parse_lzma_xml),
-    30: (None, parse_lzma_nested),
-    32: (None, parse_dna_sequence),
+    0: (None, parse_sequence),  #       DNA
+    1: (None, parse_compressed_dna),  # 2bit compressed DNA
+    5: (None, parse_xml),  #            Primers
+    6: (None, parse_xml),  #            Notes
+    7: (None, parse_lzma_xml),  #       History tree
+    8: (None, parse_xml),  #            Sequence properties
+    10: (None, parse_features),  #      Features
+    11: (None, parse_history_node),  #  History node container
+    16: (4, None),  #                   Legacy trace - skip content
+    17: (None, parse_xml),  #           Alignable sequences
+    18: (None, parse_ztr),  #           Sequence trace
+    21: (None, parse_sequence),  #      Protein
+    29: (None, parse_lzma_xml),  #      History modifier
+    30: (None, parse_lzma_nested),  #   History node content
+    32: (None, parse_sequence),  #      RNA
 }
