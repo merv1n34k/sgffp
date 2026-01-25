@@ -1,6 +1,6 @@
 [project]
 name = "sgffp"
-version = "0.5.16"
+version = "0.7.20"
 description = "SnapGene File Format Parser"
 readme = "README.md"
 license = {text = "MIT"}
@@ -16,6 +16,12 @@ dependencies = [
 
 [project.scripts]
 sff = "sgffp.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+]
 
 [build-system]
 requires = ["hatchling"]
