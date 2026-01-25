@@ -104,12 +104,13 @@ def cmd_check(args):
             ):
                 unknown.append(block_type)
 
-    for block_type in sorted(found_blocks.keys()):
-        count = len(found_blocks[block_type])
-        marker = (
-            "[NEW]" if block_type not in SCHEME and block_type in NEW_BLOCKS else ""
-        )
-        print(f"{block_type:>2}: {count:>2} {marker}")
+    if args.list:
+        for block_type in sorted(found_blocks.keys()):
+            count = len(found_blocks[block_type])
+            marker = (
+                "[NEW]" if block_type not in SCHEME and block_type in NEW_BLOCKS else ""
+            )
+            print(f"{block_type:>2}: {count:>2} {marker}")
 
     if unknown:
         print()
@@ -140,6 +141,9 @@ def main():
     p = subparsers.add_parser("check", help="Check for unknown block types")
     p.add_argument("input", help="Input SGFF file")
     p.add_argument("-e", "--examine", action="store_true", help="Dump unknown blocks")
+    p.add_argument(
+        "-l", "--list", action="store_true", help="List all blocks types and count"
+    )
 
     # Filter
     p = subparsers.add_parser("filter", help="Filter blocks")
