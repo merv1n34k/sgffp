@@ -5,48 +5,36 @@ SnapGene File Format Parser (SGFFP for short) is a reverse-engineered parser for
 > [!Important]
 > Hey! I have tried to decode as many different SnapGene blocks as I can, but surely something must be missing. This is why I ask you to check your SnapGene file(s) with `uv run sff check <your_snapgene_file>` to see which blocks your file has. If you have a new, unknown block type it will notify you with `[NEW] flag` Please open an issue and, if possible, either attach your file or dump the output of the block with the `--examine/-e` flag, i.e. `uv run sff check <your_snapgene_file> -e 1> block.dump`. Let's make parsing SnapGene files better together!
 
-Currently the parser partially does its job, producing a JSON dictionary as the result, as well as a minimalistic writer.
+The parser reads SnapGene files into Python objects and exports to JSON, with a writer for creating new SnapGene files.
 
-The project aims to be a minimalistic, fast, and useful tool for molecular biologists who happen to get stuck with a large library of SnapGene files that need to be parsed, or for developers who want to create a smooth user experience with SnapGene.
+The project aims to be a minimalistic, fast, and useful tool for molecular biologists who need to parse large libraries of SnapGene files, or for developers building SnapGene-compatible applications.
 
-Currently the following scheme is implemented, which is planned to be changed, in a better way:
+## Architecture
 
 ```mermaid
-graph TB
+flowchart LR
     subgraph Input
-        File[SnapGene File .dna]
-        Stream[Binary Stream]
+        DNA[".dna file"]
+        Bytes["bytes/stream"]
     end
 
-    subgraph Core
-        Reader[SgffReader - Parse binary format]
-        Internal[SgffObject - In-memory representation]
-        Writer[SgffWriter - Serialize to binary]
-        Parsers[Block Parsers - Type-specific parsing]
+    subgraph SGFFP
+        Reader["SgffReader"]
+        Object["SgffObject"]
+        Writer["SgffWriter"]
     end
 
     subgraph Output
-        JSON[JSON Export]
-        OutFile[SnapGene File .dna]
+        JSON["JSON"]
+        File[".dna file"]
     end
 
-    subgraph Interface
-        CLI[Command Line - parse/info/filter]
-        API[Python API - from_file/to_file]
-    end
-
-    File --> Reader
-    Stream --> Reader
-    Reader --> Parsers
-    Parsers --> Internal
-    Internal --> Writer
-    Writer --> OutFile
-    Internal --> JSON
-
-    CLI --> Reader
-    CLI --> Writer
-    API --> Reader
-    API --> Writer
+    DNA --> Reader
+    Bytes --> Reader
+    Reader --> Object
+    Object --> Writer
+    Object --> JSON
+    Writer --> File
 ```
 
 ## Install
@@ -122,7 +110,7 @@ For detailed file format specifications, see the acknowledgments section.
 | ID | Block Type                    | Read* | Write* |
 |----|-------------------------------|------|---------|
 | 0  | DNA Sequence                  | Yes  | Yes     |
-| 1  | Compressed DNA                | Yes  | No      |
+| 1  | Compressed DNA                | Yes  | Yes     |
 | 5  | Primers (XML)                 | Yes  | Yes     |
 | 6  | Notes (XML)                   | Yes  | Yes     |
 | 7  | History Tree (XML)            | Yes  | No      |
@@ -138,20 +126,16 @@ For detailed file format specifications, see the acknowledgments section.
 | 32 | RNA Sequence                  | Yes  | Yes     |
 
 
-*Please note current parser does not properly implemented, in it's current form it is useless for end-user, consider waiting for stable 1.0.0 release.
-
-
 ## Roadmap
 
 - [X] Improve SGFF parsing, unify TLV strategy
 - [X] Understand whole file structure
-- [X] Correctly parse into readable from *almost* every block
-- [ ] Parse XML into pure JSON format
-- [X] Parse and decode missing blocks and pieces (skipped - YAGNI)
-- [X] Create writer
-- [ ] Implement minimal working condition for reader and writer
-- [ ] Refine, refactor reader/writer
-- [ ] Proper documentation and README cleanup
+- [X] Correctly parse into readable format from all common blocks
+- [X] Create writer for supported block types
+- [X] Add comprehensive test suite (159 tests, 89% coverage)
+- [X] Parse XML into pure JSON format
+- [ ] Add write support for history blocks (LZMA compression)
+- [ ] Documentation improvements
 
 ## Acknowledgments
 

@@ -11,6 +11,34 @@ import xmltodict
 
 from .internal import SgffObject
 
+# Keys that should be XML attributes (need @ prefix for xmltodict)
+XML_ATTR_KEYS = {
+    "name", "type", "directionality", "range", "color", "text", "int",
+    "nextValidID", "minContinuousMatchLen", "allowMismatch",
+    "minMeltingTemperature", "showAdditionalFivePrimeMatches",
+    "minimumFivePrimeAnnealing", "UTC"
+}
+
+
+def _to_xmltodict(obj: Any) -> Any:
+    """Convert clean JSON back to xmltodict format (add @ prefix for attributes)"""
+    if isinstance(obj, dict):
+        result = {}
+        for key, value in obj.items():
+            # Add @ prefix for known attribute keys
+            if key in XML_ATTR_KEYS:
+                new_key = f"@{key}"
+            elif key == "_text":
+                new_key = "#text"
+            else:
+                new_key = key
+            result[new_key] = _to_xmltodict(value)
+        return result
+    elif isinstance(obj, list):
+        return [_to_xmltodict(item) for item in obj]
+    else:
+        return obj
+
 
 class SgffWriter:
     """Write SgffObject to SnapGene file format"""
@@ -158,9 +186,9 @@ class SgffWriter:
                 "@directionality": strand_rev.get(f.get("strand", "."), "0"),
             }
 
-            # Segments
+            # Segments - convert back to xmltodict format
             if f.get("segments"):
-                xml_f["Segment"] = f["segments"]
+                xml_f["Segment"] = _to_xmltodict(f["segments"])
 
             # Qualifiers
             quals = f.get("qualifiers", {})
@@ -183,7 +211,8 @@ class SgffWriter:
     def _serialize_xml(self, data: Dict) -> bytes:
         """Serialize dict to XML"""
         try:
-            return xmltodict.unparse(data, full_document=False).encode("utf-8")
+            xml_data = _to_xmltodict(data)
+            return xmltodict.unparse(xml_data, full_document=False).encode("utf-8")
         except:
             raise ValueError("Cannot serialize dict to XML")
 

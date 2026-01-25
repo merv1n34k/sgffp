@@ -113,20 +113,40 @@ def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
 # =============================================================================
 
 
+def _clean_xml_dict(obj: Any) -> Any:
+    """Convert xmltodict format to pure JSON (remove @ prefixes, handle #text)"""
+    if isinstance(obj, dict):
+        result = {}
+        for key, value in obj.items():
+            # Remove @ prefix from attribute keys
+            clean_key = key[1:] if key.startswith("@") else key
+            # Convert #text to _text
+            if clean_key == "#text":
+                clean_key = "_text"
+            result[clean_key] = _clean_xml_dict(value)
+        return result
+    elif isinstance(obj, list):
+        return [_clean_xml_dict(item) for item in obj]
+    else:
+        return obj
+
+
 def parse_xml(data: bytes) -> Optional[Dict]:
-    """Parse XML blocks into dict"""
+    """Parse XML blocks into dict with clean JSON format"""
     try:
         xml_str = data.decode("utf-8", errors="ignore")
-        return xmltodict.parse(xml_str)
+        parsed = xmltodict.parse(xml_str)
+        return _clean_xml_dict(parsed)
     except:
         return None
 
 
 def parse_lzma_xml(data: bytes) -> Optional[Dict]:
-    """Parse LZMA-compressed XML into dict"""
+    """Parse LZMA-compressed XML into dict with clean JSON format"""
     try:
         decompressed = lzma.decompress(data)
-        return xmltodict.parse(decompressed.decode("utf-8", errors="ignore"))
+        parsed = xmltodict.parse(decompressed.decode("utf-8", errors="ignore"))
+        return _clean_xml_dict(parsed)
     except:
         return None
 
@@ -153,6 +173,10 @@ def parse_features(data: bytes) -> Optional[Dict]:
     if not parsed or "Features" not in parsed:
         return parsed
 
+    # Handle empty <Features></Features> element (xmltodict returns None)
+    if parsed["Features"] is None:
+        return {"features": []}
+
     features_data = parsed["Features"].get("Feature", [])
     if not isinstance(features_data, list):
         features_data = [features_data]
@@ -166,8 +190,8 @@ def parse_features(data: bytes) -> Optional[Dict]:
         # Parse segment ranges
         ranges = []
         for seg in segments:
-            if "@range" in seg:
-                r = sorted(int(x) for x in seg["@range"].split("-"))
+            if "range" in seg:
+                r = sorted(int(x) for x in seg["range"].split("-"))
                 ranges.append(r)
 
         # Parse qualifiers
@@ -175,15 +199,15 @@ def parse_features(data: bytes) -> Optional[Dict]:
 
         # Defaults
         if "label" not in qualifiers:
-            qualifiers["label"] = feature.get("@name", "")
+            qualifiers["label"] = feature.get("name", "")
 
-        color = segments[0].get("@color", "") if segments else ""
+        color = segments[0].get("color", "") if segments else ""
 
         features.append(
             {
-                "name": feature.get("@name", ""),
-                "type": feature.get("@type", ""),
-                "strand": STRAND_MAP.get(feature.get("@directionality", "0"), "."),
+                "name": feature.get("name", ""),
+                "type": feature.get("type", ""),
+                "strand": STRAND_MAP.get(feature.get("directionality", "0"), "."),
                 "start": min(r[0] - 1 for r in ranges) if ranges else 0,
                 "end": max(r[1] for r in ranges) if ranges else 0,
                 "color": color,
@@ -204,13 +228,12 @@ def _parse_qualifiers(quals: Any) -> Dict[str, Any]:
 
     result = {}
     for q in quals:
-        name = q.get("@name", "")
+        name = q.get("name", "")
         val = q.get("V")
 
         if val is None:
             continue
         elif isinstance(val, dict):
-            # Single value
             result[name] = _extract_value(val)
         elif isinstance(val, list):
             result[name] = [_extract_value(v) for v in val]
@@ -222,13 +245,13 @@ def _parse_qualifiers(quals: Any) -> Dict[str, Any]:
 
 def _extract_value(v: Dict) -> Any:
     """Extract typed value from qualifier"""
-    if "@text" in v:
-        return v["@text"]
-    if "@int" in v:
-        return int(v["@int"])
+    if "text" in v:
+        return v["text"]
+    if "int" in v:
+        return int(v["int"])
     # Return first value found
     for key, val in v.items():
-        if key.startswith("@"):
+        if key != "_text":
             return val
     return v
 

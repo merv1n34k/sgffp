@@ -223,7 +223,7 @@ class TestParseXml:
         """XML with attributes"""
         xml = b'<Root attr="test"><Child>value</Child></Root>'
         result = parse_xml(xml)
-        assert result["Root"]["@attr"] == "test"
+        assert result["Root"]["attr"] == "test"
 
     def test_parse_xml_malformed(self):
         """Malformed XML returns None"""
@@ -361,13 +361,10 @@ class TestParseFeatures:
         assert result["features"][0]["color"] == "#FF0000"
 
     def test_parse_features_no_features(self):
-        """Empty features element - raises AttributeError (known edge case)"""
+        """Empty features element returns empty list"""
         xml = b"<Features></Features>"
-        # Currently the parser doesn't handle empty Features element gracefully
-        # xmltodict returns {"Features": None} for empty elements
-        # This is a known edge case that could be fixed in the parser
-        with pytest.raises(AttributeError):
-            parse_features(xml)
+        result = parse_features(xml)
+        assert result == {"features": []}
 
     def test_parse_features_invalid_xml(self):
         """Invalid XML returns None"""
