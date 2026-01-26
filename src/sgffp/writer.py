@@ -3,6 +3,7 @@ SnapGene file writer
 """
 
 import struct
+import lzma
 from typing import Union, BinaryIO, Any, Dict
 from pathlib import Path
 from io import BytesIO
@@ -110,6 +111,22 @@ class SgffWriter:
         if block_type == 10:
             return self._serialize_features(data)
 
+        # History tree (7) - LZMA compressed XML
+        if block_type == 7:
+            return self._serialize_lzma_xml(data)
+
+        # History node (11) - binary format
+        if block_type == 11:
+            return self._serialize_history_node(data)
+
+        # History modifier (29) - LZMA compressed XML
+        if block_type == 29:
+            return self._serialize_lzma_xml(data)
+
+        # History content (30) - LZMA compressed nested TLV
+        if block_type == 30:
+            return self._serialize_lzma_nested(data)
+
         # XML blocks
         if block_type in (5, 6, 8, 17):
             return self._serialize_xml(data)
@@ -215,6 +232,72 @@ class SgffWriter:
             return xmltodict.unparse(xml_data, full_document=False).encode("utf-8")
         except:
             raise ValueError("Cannot serialize dict to XML")
+
+    def _serialize_lzma_xml(self, data: Dict) -> bytes:
+        """Serialize dict to LZMA-compressed XML (blocks 7, 29)"""
+        xml_bytes = self._serialize_xml(data)
+        return lzma.compress(xml_bytes)
+
+    def _serialize_history_node(self, data: Dict) -> bytes:
+        """Serialize history node (block 11) to binary format"""
+        buf = BytesIO()
+
+        node_index = data.get("node_index", 0)
+        seq_type = data.get("sequence_type", 0)
+
+        buf.write(struct.pack(">I", node_index))
+        buf.write(bytes([seq_type]))
+
+        if seq_type == 1:
+            # Compressed DNA
+            sequence = data.get("sequence", "")
+            encoded = self._dna_to_octet(sequence)
+            compressed_length = 4 + 14 + len(encoded)
+
+            buf.write(struct.pack(">I", compressed_length))
+            buf.write(struct.pack(">I", len(sequence)))
+
+            mystery = data.get("mystery", b"\x00" * 14)
+            if len(mystery) < 14:
+                mystery = mystery + b"\x00" * (14 - len(mystery))
+            buf.write(mystery[:14])
+            buf.write(encoded)
+
+        elif seq_type in (0, 21, 32):
+            # Uncompressed sequence
+            sequence = data.get("sequence", "")
+            seq_bytes = sequence.encode("ascii", errors="ignore")
+            buf.write(struct.pack(">I", len(seq_bytes)))
+            buf.write(seq_bytes)
+
+        # seq_type == 29: modifier only, no sequence data
+
+        # Nested node_info (block 30 content)
+        node_info = data.get("node_info")
+        if node_info:
+            lzma_data = self._serialize_lzma_nested(node_info)
+            buf.write(bytes([0x1E]))  # Block type 30
+            buf.write(struct.pack(">I", len(lzma_data)))
+            buf.write(lzma_data)
+
+        return buf.getvalue()
+
+    def _serialize_lzma_nested(self, data: Dict) -> bytes:
+        """Serialize nested TLV blocks with LZMA compression (block 30)"""
+        buf = BytesIO()
+
+        for block_type, items in data.items():
+            if not isinstance(block_type, int):
+                continue
+
+            for item in items:
+                block_data = self._serialize(block_type, item)
+                if block_data:
+                    buf.write(bytes([block_type]))
+                    buf.write(struct.pack(">I", len(block_data)))
+                    buf.write(block_data)
+
+        return lzma.compress(buf.getvalue())
 
     @classmethod
     def to_file(cls, sgff: SgffObject, filepath: Union[str, Path]) -> None:
