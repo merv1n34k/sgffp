@@ -85,10 +85,11 @@ class TestInfoCommand:
         cmd_info(args)
 
         captured = capsys.readouterr()
-        assert "SnapGene File:" in captured.out
-        assert "Sequence type:" in captured.out
-        assert "Export version:" in captured.out
-        assert "Import version:" in captured.out
+        assert "File:" in captured.out
+        assert "Type:" in captured.out
+        assert "export v" in captured.out
+        assert "import v" in captured.out
+        assert "Sequence:" in captured.out
 
     def test_info_block_counts(self, test_dna, capsys):
         """Block counts shown"""
@@ -97,8 +98,6 @@ class TestInfoCommand:
 
         captured = capsys.readouterr()
         assert "Blocks:" in captured.out
-        assert "Type" in captured.out
-        assert "block(s)" in captured.out
 
 
 # =============================================================================
@@ -109,7 +108,7 @@ class TestInfoCommand:
 class TestCheckCommand:
     def test_check_lists_blocks(self, test_dna, capsys):
         """Check with -l flag lists blocks"""
-        args = MockArgs(input=str(test_dna), list=True, examine=False)
+        args = MockArgs(input=str(test_dna), list=True, dump=False)
         cmd_check(args)
 
         captured = capsys.readouterr()
@@ -119,7 +118,7 @@ class TestCheckCommand:
 
     def test_check_without_flags(self, test_dna, capsys):
         """Check without flags runs without error"""
-        args = MockArgs(input=str(test_dna), list=False, examine=False)
+        args = MockArgs(input=str(test_dna), list=False, dump=False)
         cmd_check(args)
         # Should not raise an exception
 
@@ -181,7 +180,7 @@ class TestMain:
             main()
 
         captured = capsys.readouterr()
-        assert "SnapGene File:" in captured.out
+        assert "File:" in captured.out
 
 
 # =============================================================================
@@ -198,7 +197,7 @@ class TestSubprocess:
             text=True,
         )
         assert result.returncode == 0
-        assert "SnapGene File:" in result.stdout
+        assert "File:" in result.stdout
 
     def test_cli_parse_json(self, test_dna):
         """Parse command outputs valid JSON"""

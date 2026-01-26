@@ -7,14 +7,14 @@ import sys
 import json
 import argparse
 import struct
+from importlib.metadata import version
 
 from .reader import SgffReader
 from .writer import SgffWriter
 from .internal import SgffObject
 from .parsers import SCHEME
 
-# This list will be shortened when new blocks will be decoded
-NEW_BLOCKS = [2, 3, 4, 9, 12, 15, 19, 20, 22, 23, 24, 25, 26, 27, 31]
+KNOWN_BLOCKS = set(SCHEME.keys())
 
 
 def cmd_parse(args):
@@ -50,15 +50,33 @@ def cmd_info(args):
     """Show file information"""
     sgff = SgffReader.from_file(args.input)
 
-    print(f"SnapGene File: {args.input}")
-    print(f"Sequence type: {sgff.cookie.type_of_sequence}")
-    print(f"Export version: {sgff.cookie.export_version}")
-    print(f"Import version: {sgff.cookie.import_version}")
-    print(f"\nBlocks:")
+    seq_type_names = {1: "DNA", 2: "RNA", 3: "Protein"}
+    seq_type_name = seq_type_names.get(sgff.cookie.type_of_sequence, "Unknown")
 
-    for block_type in sorted(sgff.types):
-        count = len(sgff.blocks[block_type])
-        print(f"  Type {block_type:>2}: {count} block(s)")
+    print(f"File: {args.input}")
+    print(f"Type: {seq_type_name} (export v{sgff.cookie.export_version}, import v{sgff.cookie.import_version})")
+
+    # Sequence info
+    seq = sgff.sequence
+    if seq.length > 0:
+        topo = seq.topology
+        strand = "double-stranded" if seq.is_double_stranded else "single-stranded"
+        print(f"Sequence: {seq.length} bp, {topo}, {strand}")
+
+    # Features
+    if sgff.has_features:
+        print(f"Features: {len(sgff.features)}")
+
+    # Primers
+    if sgff.has_primers:
+        print(f"Primers: {len(sgff.primers)}")
+
+    # History
+    if sgff.has_history:
+        print(f"History: {len(sgff.history)} nodes")
+
+    # Blocks summary
+    print(f"Blocks: {', '.join(str(t) for t in sorted(sgff.types))}")
 
 
 def cmd_filter(args):
@@ -97,35 +115,33 @@ def cmd_check(args):
                 found_blocks[block_type] = []
             found_blocks[block_type].append(block_data)
 
-            if (
-                block_type not in SCHEME
-                and block_type in NEW_BLOCKS
-                and block_type not in unknown
-            ):
+            if block_type not in KNOWN_BLOCKS and block_type not in unknown:
                 unknown.append(block_type)
 
     if args.list:
         for block_type in sorted(found_blocks.keys()):
             count = len(found_blocks[block_type])
-            marker = (
-                "[NEW]" if block_type not in SCHEME and block_type in NEW_BLOCKS else ""
-            )
+            marker = "[NEW]" if block_type not in KNOWN_BLOCKS else ""
             print(f"{block_type:>2}: {count:>2} {marker}")
 
     if unknown:
-        print()
-        if args.examine:
+        if args.list:
+            print()
+        if args.dump:
             for block_type in sorted(unknown):
                 for block_data in found_blocks[block_type]:
-                    print(f"NEW BLOCK: Type {block_type}, Length {len(block_data)}")
+                    print(f"Block {block_type}: {len(block_data)} bytes")
                     print(block_data.hex())
                     print()
         else:
-            print(f"Unknown block types: {sorted(unknown)}")
+            print(f"Unknown blocks: {sorted(unknown)}")
 
 
 def main():
     parser = argparse.ArgumentParser(description="SnapGene File Format tools")
+    parser.add_argument(
+        "-v", "--version", action="version", version=f"sgffp {version('sgffp')}"
+    )
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
     # Parse
@@ -138,12 +154,14 @@ def main():
     p.add_argument("input", help="Input SGFF file")
 
     # Check
-    p = subparsers.add_parser("check", help="Check for unknown block types")
-    p.add_argument("input", help="Input SGFF file")
-    p.add_argument("-e", "--examine", action="store_true", help="Dump unknown blocks")
-    p.add_argument(
-        "-l", "--list", action="store_true", help="List all blocks types and count"
+    p = subparsers.add_parser(
+        "check",
+        help="Check for unknown block types",
+        description="Silent by default. Use -l to list blocks or -d to dump unknown block data.",
     )
+    p.add_argument("input", help="Input SGFF file")
+    p.add_argument("-l", "--list", action="store_true", help="List all block types")
+    p.add_argument("-d", "--dump", action="store_true", help="Dump unknown block data")
 
     # Filter
     p = subparsers.add_parser("filter", help="Filter blocks")
