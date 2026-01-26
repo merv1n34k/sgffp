@@ -3,7 +3,7 @@
 SnapGene File Format Parser (SGFFP for short) is a reverse-engineered parser for SnapGene DNA, RNA, and protein file formats.
 
 > [!Important]
-> Hey! I have tried to decode as many different SnapGene blocks as I can, but surely something must be missing. This is why I ask you to check your SnapGene file(s) with `uv run sff check <your_snapgene_file>` to see which blocks your file has. If you have a new, unknown block type it will notify you with `[NEW] flag` Please open an issue and, if possible, either attach your file or dump the output of the block with the `--examine/-e` flag, i.e. `uv run sff check <your_snapgene_file> -e 1> block.dump`. Let's make parsing SnapGene files better together!
+> Found an unknown block type? Run `sff check your_file.dna -l` and look for `[NEW]` markers. Please report them in [#1](https://github.com/merv1n34k/sgffp/issues/1) with a dump (`sff check your_file.dna -d`). Help us decode more blocks!
 
 The parser reads SnapGene files into Python objects and exports to JSON, with a writer for creating new SnapGene files.
 
