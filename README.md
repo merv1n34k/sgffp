@@ -37,73 +37,67 @@ flowchart LR
     Writer --> File
 ```
 
-## Install
-
-Currently this project requires cloning the repository first and do the install.
-
-The project use `uv`, which automatically handles `venv` and packages.
+## Installation
 
 ```bash
-# to sync project:
+git clone https://github.com/merv1n34k/sgffp.git
+cd sgffp
 uv sync
-
-# to run cli tool:
-uv run sff
-
 ```
 
+### Quick Start
 
-## File Format Overview
+```python
+from sgffp import SgffReader, SgffWriter
 
-SnapGene files use a **Type-Length-Value (TLV)** binary format. Each block consists of:
-- 1 byte: block type ID
-- 4 bytes: block length (big-endian)
-- N bytes: block data
+# Read a SnapGene file
+sgff = SgffReader.from_file("plasmid.dna")
 
-Some blocks contain LZMA-compressed data (types 7, 29, 30) which may themselves contain nested TLV structures. History nodes (type 11) use a complex nested format with compressed DNA sequences encoded at 2 bits per base in `GATC` format.
+# Access data via typed properties
+print(sgff.sequence.value)
+print(sgff.features[0].name)
 
-For detailed file format specifications, see the acknowledgments section.
+# Modify and write back
+sgff.sequence.topology = "circular"
+SgffWriter.to_file(sgff, "output.dna")
+```
 
-## Complete Block Type Reference
+### CLI Tool
 
-| ID | Block Type                   | Format           | Decoded |
-|----|------------------------------|------------------|---------|
-| 0  | DNA Sequence                 | UFT-8            | Yes     |
-| 1  | Compressed DNA               | 2-bit encoding   | Yes     |
-| 2  | Unknown                      | Unknown          | No      |
-| 3  | Enzyme Cutters               | Mixed            | No*     |
-| 4  | Unknown                      | Unknown          | No      |
-| 5  | Primers                      | XML              | Yes     |
-| 6  | Notes                        | XML              | Yes     |
-| 7  | History Tree                 | LZMA + XML       | Yes     |
-| 8  | Sequence Properties          | XML              | Yes     |
-| 9  | File Description (Legacy)    | Unknown          | No      |
-| 10 | Features                     | XML              | Yes     |
-| 11 | History Node Container       | Nested TLV       | Yes     |
-| 12 | Unknown                      | Unknown          | No      |
-| 13 | Enzyme Info                  | Binary           | No*     |
-| 14 | Custom Enzymes               | XML              | Yes*    |
-| 15 | Unknown                      | Unknown          | No      |
-| 16 | Sequence Trace (Legacy)      | 4 empty bytes    | No*     |
-| 17 | Alignable Sequences          | XML              | Yes     |
-| 18 | Sequence Trace               | ZTR format       | Yes     |
-| 19 | Uracil Positions             | Unknown          | No      |
-| 20 | Custom Colors                | XML              | No      |
-| 21 | Protein Sequence             | UTF-8            | Yes     |
-| 22 | Unknown                      | Unknown          | No      |
-| 23 | Unknown                      | Unknown          | No      |
-| 24 | Unknown                      | Unknown          | No      |
-| 25 | Unknown                      | Unknown          | No      |
-| 26 | Unknown                      | Unknown          | No      |
-| 27 | Unknown                      | Unknown          | No      |
-| 28 | Enzyme Visualization         | XML              | Yes*    |
-| 29 | History Modifier             | LZMA + XML       | Yes     |
-| 30 | History Content              | LZMA + Nested    | Yes     |
-| 31 | Unknown                      | Unknown          | No      |
-| 32 | RNA Sequence                 | UFT-8            | Yes     |
+```bash
+uv run sff check plasmid.dna    # Inspect file blocks
+uv run sff parse plasmid.dna    # Export to JSON
+uv run sff info plasmid.dna     # Show file information
+```
 
+## File Format
 
-*Marked block types are not decoded, but most likely won't be in the future, as they are internal SnapGene data and should not affect your important data. These block won't be read or written by the parser.
+SnapGene uses a Type-Length-Value (TLV) binary format where each block contains:
+
+| Field  | Size    | Description              |
+|--------|---------|--------------------------|
+| Type   | 1 byte  | Block type identifier    |
+| Length | 4 bytes | Payload size (big-endian)|
+| Data   | N bytes | Block payload            |
+
+Data encoding varies by block type: UTF-8 for sequences, XML for annotations, 2-bit encoding for compressed DNA (GATC → 00/01/10/11), and LZMA compression for history blocks.
+
+## Block Types
+
+All known SnapGene block types and their encoding formats:
+
+| ID | Block Type           | Format        | ID | Block Type           | Format        |
+|----|----------------------|---------------|----|----------------------|---------------|
+| 0  | DNA Sequence         | UTF-8         | 17 | Alignable Sequences  | XML           |
+| 1  | Compressed DNA       | 2-bit GATC    | 18 | Sequence Trace       | ZTR           |
+| 5  | Primers              | XML           | 21 | Protein Sequence     | UTF-8         |
+| 6  | Notes                | XML           | 28 | Enzyme Visualization | XML           |
+| 7  | History Tree         | LZMA + XML    | 29 | History Modifier     | LZMA + XML    |
+| 8  | Sequence Properties  | XML           | 30 | History Content      | LZMA + TLV    |
+| 10 | Features             | XML           | 32 | RNA Sequence         | UTF-8         |
+| 11 | History Nodes        | Binary + TLV  | 14 | Custom Enzymes       | XML           |
+
+Blocks not listed (2-4, 9, 12-13, 15-16, 19-20, 22-27, 31) are either unknown or internal SnapGene data.
 
 ## Supported Block Types
 
