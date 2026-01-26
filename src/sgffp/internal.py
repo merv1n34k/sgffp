@@ -3,7 +3,18 @@ Internal data structures for SGFF representation
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List, Iterator
+from typing import Dict, Any, Optional, List, Iterator, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .models import (
+        SgffSequence,
+        SgffFeatureList,
+        SgffHistory,
+        SgffPrimerList,
+        SgffNotes,
+        SgffProperties,
+        SgffAlignmentList,
+    )
 
 
 @dataclass
@@ -103,4 +114,67 @@ class SgffObject:
             del self.blocks[block_id]
             return True
         return False
+
+    def block(self, block_id: int) -> Optional[Any]:
+        """Raw block access by ID"""
+        items = self.blocks.get(block_id, [])
+        return items[0] if items else None
+
+    @property
+    def sequence(self) -> "SgffSequence":
+        """DNA/RNA/Protein sequence (blocks 0, 1, 21, 32)"""
+        from .models import SgffSequence
+        return SgffSequence(self.blocks)
+
+    @property
+    def features(self) -> "SgffFeatureList":
+        """Annotation features (block 10)"""
+        from .models import SgffFeatureList
+        return SgffFeatureList(self.blocks)
+
+    @property
+    def history(self) -> "SgffHistory":
+        """Edit history (blocks 7, 11, 29, 30)"""
+        from .models import SgffHistory
+        return SgffHistory(self.blocks)
+
+    @property
+    def primers(self) -> "SgffPrimerList":
+        """Primers (block 5)"""
+        from .models import SgffPrimerList
+        return SgffPrimerList(self.blocks)
+
+    @property
+    def notes(self) -> "SgffNotes":
+        """File notes (block 6)"""
+        from .models import SgffNotes
+        return SgffNotes(self.blocks)
+
+    @property
+    def properties(self) -> "SgffProperties":
+        """Sequence properties (block 8)"""
+        from .models import SgffProperties
+        return SgffProperties(self.blocks)
+
+    @property
+    def alignments(self) -> "SgffAlignmentList":
+        """Alignable sequences (block 17)"""
+        from .models import SgffAlignmentList
+        return SgffAlignmentList(self.blocks)
+
+    @property
+    def has_history(self) -> bool:
+        return any(bid in self.blocks for bid in (7, 11, 29, 30))
+
+    @property
+    def has_features(self) -> bool:
+        return 10 in self.blocks
+
+    @property
+    def has_primers(self) -> bool:
+        return 5 in self.blocks
+
+    @property
+    def has_alignments(self) -> bool:
+        return 17 in self.blocks
 
