@@ -5,6 +5,17 @@ description = "Read, write, and manipulate SnapGene .dna files"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.12"
+authors = [{ name = "Oleksii Stroganov", email = "merv1n@proton.me" }]
+keywords = ["snapgene", "dna", "rna", "protein", "bioinformatics", "parser", "molecular-biology"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: File Formats",
+]
 dependencies = [
     "biopython>=1.86",
     "html2text>=2025.4.15",
@@ -13,6 +24,11 @@ dependencies = [
     "pandas>=2.3.3",
     "xmltodict>=1.0.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/merv1n34k/sgffp"
+Repository = "https://github.com/merv1n34k/sgffp"
+Issues = "https://github.com/merv1n34k/sgffp/issues"
 
 [project.scripts]
 sff = "sgffp.cli:main"
