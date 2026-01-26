@@ -1,7 +1,7 @@
 [project]
 name = "sgffp"
-version = "0.9.0"
-description = "Read, write, and manipulate SnapGene .dna files"
+version = "0.10.0"
+description = "Read, write, and manipulate SnapGene files (.dna, .rna, .prot)"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.12"
