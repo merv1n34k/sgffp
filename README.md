@@ -107,34 +107,37 @@ For detailed file format specifications, see the acknowledgments section.
 
 ## Supported Block Types
 
-| ID | Block Type                    | Read* | Write* |
-|----|-------------------------------|------|---------|
-| 0  | DNA Sequence                  | Yes  | Yes     |
-| 1  | Compressed DNA                | Yes  | Yes     |
-| 5  | Primers (XML)                 | Yes  | Yes     |
-| 6  | Notes (XML)                   | Yes  | Yes     |
-| 7  | History Tree (XML)            | Yes  | No      |
-| 8  | Sequence Properties (XML)     | Yes  | Yes     |
-| 10 | Features (XML)                | Yes  | Yes     |
-| 11 | History Nodes                 | Yes  | No      |
-| 14 | Custom Enzymes (XML)          | Yes  | Yes     |
-| 17 | Alignable Sequences (XML)     | Yes  | Yes     |
-| 21 | Protein Sequence              | Yes  | Yes     |
-| 28 | Enzyme Visualization (XML)    | Yes  | Yes     |
-| 29 | History Modifier (XML)        | Yes  | No      |
-| 30 | History Content (Nested)      | Yes  | No      |
-| 32 | RNA Sequence                  | Yes  | Yes     |
+The table below shows which block types can be read from and written to SnapGene files. Blocks marked with a Model have typed Python classes for convenient access (e.g., `sgff.sequence`, `sgff.features`, `sgff.history`).
+
+| ID | Block Type                    | Read | Write | Model |
+|----|-------------------------------|------|-------|-------|
+| 0  | DNA Sequence                  | +    | +     | +     |
+| 1  | Compressed DNA                | +    | +     | +     |
+| 5  | Primers (XML)                 | +    | +     | +     |
+| 6  | Notes (XML)                   | +    | +     | +     |
+| 7  | History Tree (XML)            | +    | +     | +     |
+| 8  | Sequence Properties (XML)     | +    | +     | +     |
+| 10 | Features (XML)                | +    | +     | +     |
+| 11 | History Nodes                 | +    | +     | +     |
+| 14 | Custom Enzymes (XML)          | +    | +     | -     |
+| 17 | Alignable Sequences (XML)     | +    | +     | +     |
+| 21 | Protein Sequence              | +    | +     | +     |
+| 28 | Enzyme Visualization (XML)    | +    | +     | -     |
+| 29 | History Modifier (XML)        | +    | +     | +     |
+| 30 | History Content (Nested)      | +    | +     | +     |
+| 32 | RNA Sequence                  | +    | +     | +     |
 
 
 ## Roadmap
 
-- [X] Improve SGFF parsing, unify TLV strategy
-- [X] Understand whole file structure
-- [X] Correctly parse into readable format from all common blocks
-- [X] Create writer for supported block types
-- [X] Add comprehensive test suite (159 tests, 89% coverage)
-- [X] Parse XML into pure JSON format
-- [ ] Add write support for history blocks (LZMA compression)
+- [x] Improve SGFF parsing, unify TLV strategy
+- [x] Understand whole file structure
+- [x] Correctly parse into readable format from all common blocks
+- [x] Create writer for supported block types
+- [x] Add comprehensive test suite (199 tests)
+- [x] Parse XML into pure JSON format
+- [x] Add write support for history blocks (LZMA compression)
+- [x] Add typed model classes for easy data access
 - [ ] Documentation improvements
 
 ## Acknowledgments
