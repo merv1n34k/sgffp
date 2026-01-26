@@ -40,9 +40,21 @@ flowchart LR
 ## Installation
 
 ```bash
+pip install sgffp
+```
+
+Or with uv:
+
+```bash
+uv add sgffp
+```
+
+For development:
+
+```bash
 git clone https://github.com/merv1n34k/sgffp.git
 cd sgffp
-uv sync
+uv sync --all-extras
 ```
 
 ### Quick Start
