@@ -137,7 +137,7 @@ class TestHistoryRoundtrip:
         from sgffp.writer import SgffWriter
 
         blocks = {
-            7: [{"HistoryTree": {"Node": {"id": "1", "name": "test"}}}]
+            7: [{"HistoryTree": {"Node": {"ID": "1", "name": "test", "type": "DNA", "seqLen": "100", "strandedness": "double", "circular": "0", "upstreamModification": "Unmodified", "downstreamModification": "Unmodified", "operation": "invalid"}}}]
         }
         sgff = SgffObject(cookie=Cookie(1, 1, 1), blocks=blocks)
 
@@ -145,4 +145,7 @@ class TestHistoryRoundtrip:
         sgff2 = SgffReader.from_bytes(output)
 
         tree = sgff2.history.tree
-        assert "HistoryTree" in tree
+        assert tree is not None
+        assert tree.root is not None
+        assert tree.root.name == "test"
+        assert tree.root.id == 1
