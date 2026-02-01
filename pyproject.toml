@@ -1,6 +1,6 @@
 [project]
 name = "sgffp"
-version = "0.12.0"
+version = "0.13.0"
 description = "Read, write, and manipulate SnapGene files (.dna, .rna, .prot)"
 readme = "README.md"
 license = {text = "MIT"}
