@@ -25,6 +25,7 @@ from .models import (
     SgffAlignment,
     SgffAlignmentList,
     SgffTrace,
+    SgffTraceList,
     SgffTraceClip,
     SgffTraceSamples,
 )
@@ -54,6 +55,7 @@ __all__ = [
     "SgffAlignment",
     "SgffAlignmentList",
     "SgffTrace",
+    "SgffTraceList",
     "SgffTraceClip",
     "SgffTraceSamples",
 ]

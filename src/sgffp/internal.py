@@ -13,7 +13,7 @@ from .models import (
     SgffNotes,
     SgffProperties,
     SgffAlignmentList,
-    SgffTrace,
+    SgffTraceList,
 )
 
 
@@ -156,9 +156,9 @@ class SgffObject:
         return SgffAlignmentList(self.blocks)
 
     @property
-    def trace(self) -> SgffTrace:
-        """Sequence trace / chromatogram (block 18)"""
-        return SgffTrace(self.blocks)
+    def traces(self) -> SgffTraceList:
+        """Sequence traces / chromatograms (block 18)"""
+        return SgffTraceList(self.blocks)
 
     @property
     def has_history(self) -> bool:

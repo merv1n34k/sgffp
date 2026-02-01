@@ -5,7 +5,7 @@ ZTR format contains chromatogram data from Sanger sequencing.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Iterator
 
 from .base import SgffModel
 
@@ -14,8 +14,8 @@ from .base import SgffModel
 class SgffTraceClip:
     """Quality clip boundaries for trace data"""
 
-    left: int  # Left clip position (0-based)
-    right: int  # Right clip position
+    left: int = 0  # Left clip position (0-based)
+    right: int = 0  # Right clip position
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffTraceClip":
@@ -67,174 +67,36 @@ class SgffTraceSamples:
         return self.length
 
 
-class SgffTrace(SgffModel):
-    """
-    SnapGene sequence trace data (block 18).
+@dataclass
+class SgffTrace:
+    """Single sequence trace (chromatogram) data"""
 
-    Contains chromatogram data from Sanger sequencing in ZTR format.
-    """
-
-    BLOCK_IDS = (18,)
-
-    def __init__(self, blocks: Dict[int, List[Any]]):
-        super().__init__(blocks)
-        self._bases: Optional[str] = None
-        self._positions: Optional[List[int]] = None
-        self._confidence: Optional[List[int]] = None
-        self._samples: Optional[SgffTraceSamples] = None
-        self._clip: Optional[SgffTraceClip] = None
-        self._text: Optional[Dict[str, str]] = None
-        self._comments: Optional[List[str]] = None
-        self._loaded: bool = False
-
-    def _load(self) -> None:
-        """Load and parse trace data from block 18"""
-        if self._loaded:
-            return
-
-        data = self._get_block(18)
-        if not data:
-            self._loaded = True
-            return
-
-        self._bases = data.get("bases")
-        self._positions = data.get("positions")
-        self._confidence = data.get("confidence")
-        self._text = data.get("text")
-        self._comments = data.get("comments")
-
-        if "samples" in data:
-            self._samples = SgffTraceSamples.from_dict(data["samples"])
-
-        if "clip" in data:
-            self._clip = SgffTraceClip.from_dict(data["clip"])
-
-        self._loaded = True
-
-    # -------------------------------------------------------------------------
-    # Properties
-    # -------------------------------------------------------------------------
+    bases: str = ""
+    positions: List[int] = field(default_factory=list)
+    confidence: List[int] = field(default_factory=list)
+    samples: Optional[SgffTraceSamples] = None
+    clip: Optional[SgffTraceClip] = None
+    text: Dict[str, str] = field(default_factory=dict)
+    comments: List[str] = field(default_factory=list)
 
     @property
-    def bases(self) -> Optional[str]:
-        """Base calls (sequence) from trace"""
-        self._load()
-        return self._bases
-
-    @bases.setter
-    def bases(self, value: str) -> None:
-        self._load()
-        self._bases = value
-        self._sync()
-
-    @property
-    def positions(self) -> Optional[List[int]]:
-        """Base-to-sample position mapping (one per base)"""
-        self._load()
-        return self._positions
-
-    @positions.setter
-    def positions(self, value: List[int]) -> None:
-        self._load()
-        self._positions = value
-        self._sync()
-
-    @property
-    def confidence(self) -> Optional[List[int]]:
-        """Confidence/quality scores (one per base)"""
-        self._load()
-        return self._confidence
-
-    @confidence.setter
-    def confidence(self, value: List[int]) -> None:
-        self._load()
-        self._confidence = value
-        self._sync()
-
-    @property
-    def samples(self) -> Optional[SgffTraceSamples]:
-        """Trace sample intensities for ACGT channels"""
-        self._load()
-        return self._samples
-
-    @samples.setter
-    def samples(self, value: SgffTraceSamples) -> None:
-        self._load()
-        self._samples = value
-        self._sync()
-
-    @property
-    def clip(self) -> Optional[SgffTraceClip]:
-        """Quality clip boundaries"""
-        self._load()
-        return self._clip
-
-    @clip.setter
-    def clip(self, value: SgffTraceClip) -> None:
-        self._load()
-        self._clip = value
-        self._sync()
-
-    @property
-    def text(self) -> Optional[Dict[str, str]]:
-        """Metadata key-value pairs"""
-        self._load()
-        return self._text
-
-    @text.setter
-    def text(self, value: Dict[str, str]) -> None:
-        self._load()
-        self._text = value
-        self._sync()
-
-    @property
-    def comments(self) -> Optional[List[str]]:
-        """Free-text comments"""
-        self._load()
-        return self._comments
-
-    @comments.setter
-    def comments(self, value: List[str]) -> None:
-        self._load()
-        self._comments = value
-        self._sync()
-
-    # -------------------------------------------------------------------------
-    # Convenience properties
-    # -------------------------------------------------------------------------
-
-    @property
-    def sequence(self) -> Optional[str]:
+    def sequence(self) -> str:
         """Alias for bases"""
         return self.bases
 
     @property
     def length(self) -> int:
         """Number of bases in trace"""
-        return len(self.bases) if self.bases else 0
+        return len(self.bases)
 
     @property
     def sample_count(self) -> int:
         """Number of sample points in trace"""
         return len(self.samples) if self.samples else 0
 
-    # -------------------------------------------------------------------------
-    # Methods
-    # -------------------------------------------------------------------------
-
     def get_metadata(self, key: str, default: str = "") -> str:
         """Get metadata value by key"""
-        if self.text:
-            return self.text.get(key, default)
-        return default
-
-    def set_metadata(self, key: str, value: str) -> None:
-        """Set metadata value"""
-        self._load()
-        if self._text is None:
-            self._text = {}
-        self._text[key] = value
-        self._sync()
+        return self.text.get(key, default)
 
     def get_confidence_at(self, index: int) -> Optional[int]:
         """Get confidence score at base index"""
@@ -248,40 +110,109 @@ class SgffTrace(SgffModel):
             return self.positions[index]
         return None
 
-    # -------------------------------------------------------------------------
-    # Sync
-    # -------------------------------------------------------------------------
+    @classmethod
+    def from_dict(cls, data: Dict) -> "SgffTrace":
+        samples = None
+        if "samples" in data:
+            samples = SgffTraceSamples.from_dict(data["samples"])
 
-    def _sync(self) -> None:
-        """Write trace data back to block 18"""
-        data: Dict[str, Any] = {}
+        clip = None
+        if "clip" in data:
+            clip = SgffTraceClip.from_dict(data["clip"])
 
-        if self._bases:
-            data["bases"] = self._bases
-        if self._positions:
-            data["positions"] = self._positions
-        if self._confidence:
-            data["confidence"] = self._confidence
-        if self._samples:
-            data["samples"] = self._samples.to_dict()
-        if self._clip:
-            data["clip"] = self._clip.to_dict()
-        if self._text:
-            data["text"] = self._text
-        if self._comments:
-            data["comments"] = self._comments
+        return cls(
+            bases=data.get("bases", ""),
+            positions=data.get("positions", []),
+            confidence=data.get("confidence", []),
+            samples=samples,
+            clip=clip,
+            text=data.get("text", {}),
+            comments=data.get("comments", []),
+        )
 
-        if data:
-            self._set_block(18, data)
-        else:
-            self._remove_block(18)
+    def to_dict(self) -> Dict:
+        result: Dict[str, Any] = {}
 
-    # -------------------------------------------------------------------------
-    # Dunder methods
-    # -------------------------------------------------------------------------
+        if self.bases:
+            result["bases"] = self.bases
+        if self.positions:
+            result["positions"] = self.positions
+        if self.confidence:
+            result["confidence"] = self.confidence
+        if self.samples:
+            result["samples"] = self.samples.to_dict()
+        if self.clip:
+            result["clip"] = self.clip.to_dict()
+        if self.text:
+            result["text"] = self.text
+        if self.comments:
+            result["comments"] = self.comments
+
+        return result
 
     def __len__(self) -> int:
         return self.length
 
     def __repr__(self) -> str:
         return f"SgffTrace(bases={self.length}, samples={self.sample_count})"
+
+
+class SgffTraceList(SgffModel):
+    """Trace list wrapper for block 18"""
+
+    BLOCK_IDS = (18,)
+
+    def __init__(self, blocks: Dict[int, List[Any]]):
+        super().__init__(blocks)
+        self._items: Optional[List[SgffTrace]] = None
+
+    def _load(self) -> List[SgffTrace]:
+        """Load traces from all block 18 items"""
+        traces_data = self._get_blocks(18)
+        return [SgffTrace.from_dict(t) for t in traces_data]
+
+    @property
+    def items(self) -> List[SgffTrace]:
+        if self._items is None:
+            self._items = self._load()
+        return self._items
+
+    def add(self, trace: SgffTrace) -> None:
+        """Add trace and sync to blocks"""
+        self.items.append(trace)
+        self._sync()
+
+    def remove(self, idx: int) -> bool:
+        """Remove trace by index and sync"""
+        if 0 <= idx < len(self.items):
+            self.items.pop(idx)
+            self._sync()
+            return True
+        return False
+
+    def clear(self) -> None:
+        """Remove all traces"""
+        self._items = []
+        self._sync()
+
+    def _sync(self) -> None:
+        """Write traces back to block 18"""
+        if self._items is None:
+            return
+
+        if self._items:
+            self._set_blocks(18, [t.to_dict() for t in self._items])
+        else:
+            self._remove_block(18)
+
+    def __iter__(self) -> Iterator[SgffTrace]:
+        return iter(self.items)
+
+    def __len__(self) -> int:
+        return len(self.items)
+
+    def __getitem__(self, idx: int) -> SgffTrace:
+        return self.items[idx]
+
+    def __repr__(self) -> str:
+        return f"SgffTraceList(count={len(self)})"
