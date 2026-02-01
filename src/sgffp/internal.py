@@ -3,18 +3,18 @@ Internal data structures for SGFF representation
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, Any, Optional, List, Iterator, TYPE_CHECKING
+from typing import Dict, Any, Optional, List, Iterator
 
-if TYPE_CHECKING:
-    from .models import (
-        SgffSequence,
-        SgffFeatureList,
-        SgffHistory,
-        SgffPrimerList,
-        SgffNotes,
-        SgffProperties,
-        SgffAlignmentList,
-    )
+from .models import (
+    SgffSequence,
+    SgffFeatureList,
+    SgffHistory,
+    SgffPrimerList,
+    SgffNotes,
+    SgffProperties,
+    SgffAlignmentList,
+    SgffTrace,
+)
 
 
 @dataclass
@@ -121,46 +121,44 @@ class SgffObject:
         return items[0] if items else None
 
     @property
-    def sequence(self) -> "SgffSequence":
+    def sequence(self) -> SgffSequence:
         """DNA/RNA/Protein sequence (blocks 0, 1, 21, 32)"""
-        from .models import SgffSequence
         return SgffSequence(self.blocks)
 
     @property
-    def features(self) -> "SgffFeatureList":
+    def features(self) -> SgffFeatureList:
         """Annotation features (block 10)"""
-        from .models import SgffFeatureList
         return SgffFeatureList(self.blocks)
 
     @property
-    def history(self) -> "SgffHistory":
+    def history(self) -> SgffHistory:
         """Edit history (blocks 7, 11, 29, 30)"""
-        from .models import SgffHistory
         return SgffHistory(self.blocks)
 
     @property
-    def primers(self) -> "SgffPrimerList":
+    def primers(self) -> SgffPrimerList:
         """Primers (block 5)"""
-        from .models import SgffPrimerList
         return SgffPrimerList(self.blocks)
 
     @property
-    def notes(self) -> "SgffNotes":
+    def notes(self) -> SgffNotes:
         """File notes (block 6)"""
-        from .models import SgffNotes
         return SgffNotes(self.blocks)
 
     @property
-    def properties(self) -> "SgffProperties":
+    def properties(self) -> SgffProperties:
         """Sequence properties (block 8)"""
-        from .models import SgffProperties
         return SgffProperties(self.blocks)
 
     @property
-    def alignments(self) -> "SgffAlignmentList":
+    def alignments(self) -> SgffAlignmentList:
         """Alignable sequences (block 17)"""
-        from .models import SgffAlignmentList
         return SgffAlignmentList(self.blocks)
+
+    @property
+    def trace(self) -> SgffTrace:
+        """Sequence trace / chromatogram (block 18)"""
+        return SgffTrace(self.blocks)
 
     @property
     def has_history(self) -> bool:
@@ -177,4 +175,8 @@ class SgffObject:
     @property
     def has_alignments(self) -> bool:
         return 17 in self.blocks
+
+    @property
+    def has_trace(self) -> bool:
+        return 18 in self.blocks
 

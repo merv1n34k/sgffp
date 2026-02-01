@@ -19,6 +19,7 @@ from .primer import SgffPrimer, SgffPrimerList
 from .notes import SgffNotes
 from .properties import SgffProperties
 from .alignment import SgffAlignment, SgffAlignmentList
+from .trace import SgffTrace, SgffTraceClip, SgffTraceSamples
 
 __all__ = [
     "SgffModel",
@@ -41,4 +42,7 @@ __all__ = [
     "SgffProperties",
     "SgffAlignment",
     "SgffAlignmentList",
+    "SgffTrace",
+    "SgffTraceClip",
+    "SgffTraceSamples",
 ]
