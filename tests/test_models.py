@@ -22,6 +22,9 @@ from sgffp.models import (
     SgffProperties,
     SgffAlignment,
     SgffAlignmentList,
+    SgffTrace,
+    SgffTraceClip,
+    SgffTraceSamples,
 )
 
 
@@ -585,3 +588,162 @@ class TestSgffAlignmentList:
         al = SgffAlignmentList(blocks)
         assert len(al) == 1
         assert al[0].name == "Ref"
+
+
+class TestSgffTraceClip:
+    def test_from_dict(self):
+        """Create clip from dict"""
+        data = {"left": 10, "right": 500}
+        clip = SgffTraceClip.from_dict(data)
+        assert clip.left == 10
+        assert clip.right == 500
+
+    def test_to_dict(self):
+        """Convert clip to dict"""
+        clip = SgffTraceClip(left=5, right=100)
+        data = clip.to_dict()
+        assert data["left"] == 5
+        assert data["right"] == 100
+
+    def test_defaults(self):
+        """Missing values default to 0"""
+        clip = SgffTraceClip.from_dict({})
+        assert clip.left == 0
+        assert clip.right == 0
+
+
+class TestSgffTraceSamples:
+    def test_from_dict(self):
+        """Create samples from dict"""
+        data = {"A": [1, 2, 3], "C": [4, 5, 6], "G": [7, 8, 9], "T": [10, 11, 12]}
+        samples = SgffTraceSamples.from_dict(data)
+        assert samples.a == [1, 2, 3]
+        assert samples.c == [4, 5, 6]
+        assert samples.g == [7, 8, 9]
+        assert samples.t == [10, 11, 12]
+
+    def test_to_dict(self):
+        """Convert samples to dict"""
+        samples = SgffTraceSamples(a=[1, 2], c=[3, 4], g=[5, 6], t=[7, 8])
+        data = samples.to_dict()
+        assert data["A"] == [1, 2]
+        assert data["C"] == [3, 4]
+        assert data["G"] == [5, 6]
+        assert data["T"] == [7, 8]
+
+    def test_to_dict_empty_channels(self):
+        """Empty channels are omitted from dict"""
+        samples = SgffTraceSamples(a=[1, 2], c=[], g=[], t=[])
+        data = samples.to_dict()
+        assert data == {"A": [1, 2]}
+
+    def test_length(self):
+        """Length returns max channel length"""
+        samples = SgffTraceSamples(a=[1, 2, 3], c=[1, 2], g=[], t=[1])
+        assert samples.length == 3
+        assert len(samples) == 3
+
+    def test_empty_length(self):
+        """Empty samples have length 0"""
+        samples = SgffTraceSamples()
+        assert len(samples) == 0
+
+
+class TestSgffTrace:
+    def test_empty_blocks(self):
+        """Empty blocks return empty trace"""
+        trace = SgffTrace({})
+        assert trace.bases is None
+        assert trace.positions is None
+        assert trace.confidence is None
+        assert trace.samples is None
+        assert trace.clip is None
+        assert trace.length == 0
+
+    def test_load_trace(self):
+        """Load trace from block 18"""
+        blocks = {
+            18: [{
+                "bases": "ATCGATCG",
+                "positions": [10, 20, 30, 40, 50, 60, 70, 80],
+                "confidence": [40, 45, 50, 55, 40, 45, 50, 55],
+                "samples": {"A": [1, 2], "C": [3, 4], "G": [5, 6], "T": [7, 8]},
+                "clip": {"left": 5, "right": 100},
+                "text": {"MACH": "ABI3730"},
+                "comments": ["Test trace"],
+            }]
+        }
+        trace = SgffTrace(blocks)
+        assert trace.bases == "ATCGATCG"
+        assert trace.sequence == "ATCGATCG"
+        assert trace.length == 8
+        assert len(trace) == 8
+        assert trace.positions == [10, 20, 30, 40, 50, 60, 70, 80]
+        assert trace.confidence == [40, 45, 50, 55, 40, 45, 50, 55]
+        assert trace.samples.a == [1, 2]
+        assert trace.sample_count == 2
+        assert trace.clip.left == 5
+        assert trace.clip.right == 100
+        assert trace.text == {"MACH": "ABI3730"}
+        assert trace.comments == ["Test trace"]
+
+    def test_get_confidence_at(self):
+        """Get confidence at specific base"""
+        blocks = {18: [{"bases": "ATCG", "confidence": [10, 20, 30, 40]}]}
+        trace = SgffTrace(blocks)
+        assert trace.get_confidence_at(0) == 10
+        assert trace.get_confidence_at(2) == 30
+        assert trace.get_confidence_at(10) is None
+
+    def test_get_position_at(self):
+        """Get sample position at specific base"""
+        blocks = {18: [{"bases": "ATCG", "positions": [100, 200, 300, 400]}]}
+        trace = SgffTrace(blocks)
+        assert trace.get_position_at(0) == 100
+        assert trace.get_position_at(3) == 400
+        assert trace.get_position_at(10) is None
+
+    def test_get_metadata(self):
+        """Get metadata by key"""
+        blocks = {18: [{"text": {"MACH": "ABI3730", "LANE": "5"}}]}
+        trace = SgffTrace(blocks)
+        assert trace.get_metadata("MACH") == "ABI3730"
+        assert trace.get_metadata("LANE") == "5"
+        assert trace.get_metadata("MISSING", "default") == "default"
+
+    def test_set_metadata(self):
+        """Set metadata value"""
+        blocks = {18: [{"bases": "ATCG"}]}
+        trace = SgffTrace(blocks)
+        trace.set_metadata("MACH", "ABI3730")
+        assert trace.text["MACH"] == "ABI3730"
+        assert blocks[18][0]["text"]["MACH"] == "ABI3730"
+
+    def test_modify_bases(self):
+        """Modify bases updates blocks"""
+        blocks = {18: [{"bases": "ATCG"}]}
+        trace = SgffTrace(blocks)
+        trace.bases = "GGGG"
+        assert blocks[18][0]["bases"] == "GGGG"
+
+    def test_modify_samples(self):
+        """Modify samples updates blocks"""
+        blocks = {18: [{"bases": "AT"}]}
+        trace = SgffTrace(blocks)
+        trace.samples = SgffTraceSamples(a=[1, 2], c=[3, 4], g=[5, 6], t=[7, 8])
+        assert blocks[18][0]["samples"]["A"] == [1, 2]
+
+    def test_modify_clip(self):
+        """Modify clip updates blocks"""
+        blocks = {18: [{"bases": "AT"}]}
+        trace = SgffTrace(blocks)
+        trace.clip = SgffTraceClip(left=10, right=90)
+        assert blocks[18][0]["clip"]["left"] == 10
+
+    def test_repr(self):
+        """String representation"""
+        blocks = {18: [{"bases": "ATCG", "samples": {"A": [1, 2, 3]}}]}
+        trace = SgffTrace(blocks)
+        assert "SgffTrace" in repr(trace)
+        assert "bases=4" in repr(trace)
+        assert "samples=3" in repr(trace)
