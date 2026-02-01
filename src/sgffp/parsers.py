@@ -263,22 +263,60 @@ def _extract_value(v: Dict) -> Any:
 ZTR_MAGIC = b"\xaeZTR\r\n\x1a\n"
 
 
+def _ztr_decompress(chunk_data: bytes) -> bytes:
+    """Decompress ZTR chunk data based on format byte"""
+    if not chunk_data:
+        return chunk_data
+
+    format_byte = chunk_data[0]
+
+    # Format 0: raw data
+    if format_byte == 0:
+        return chunk_data
+
+    # Format 2: zlib compressed
+    if format_byte == 2 and len(chunk_data) > 5:
+        try:
+            return b"\x00" + zlib.decompress(chunk_data[5:])
+        except Exception:
+            pass
+
+    return chunk_data
+
+
 def parse_ztr(data: bytes) -> Optional[Dict[str, Any]]:
-    """Type 18: Sequence trace (ZTR format)"""
+    """
+    Type 18: Sequence trace (ZTR format)
+
+    Parses ZTR chunks:
+    - BASE: base calls (sequence)
+    - BPOS: base-to-sample positions
+    - CNF4: confidence scores
+    - SMP4: combined ACGT trace samples
+    - SAMP: individual channel trace samples
+    - TEXT: metadata key-value pairs
+    - CLIP: quality clip boundaries
+    - COMM: comments
+    """
     if len(data) < 10 or data[:8] != ZTR_MAGIC:
         return None
 
-    result = {}
-    offset = 10
+    result: Dict[str, Any] = {}
+    offset = 10  # Skip magic (8) + version (2)
 
-    while offset + 12 <= len(data):
+    while offset + 8 <= len(data):
+        # Chunk header: type (4) + metadata_length (4)
         chunk_type = data[offset : offset + 4].decode("ascii", errors="ignore").strip()
         meta_len = struct.unpack(">I", data[offset + 4 : offset + 8])[0]
+
+        # Store metadata if present (e.g., SAMP has 4-byte channel name)
+        meta_data = data[offset + 8 : offset + 8 + meta_len] if meta_len > 0 else None
         offset += 8 + meta_len
 
         if offset + 4 > len(data):
             break
 
+        # Data length
         data_len = struct.unpack(">I", data[offset : offset + 4])[0]
         offset += 4
 
@@ -286,44 +324,80 @@ def parse_ztr(data: bytes) -> Optional[Dict[str, Any]]:
             break
 
         chunk_data = data[offset : offset + data_len]
+        chunk_data = _ztr_decompress(chunk_data)
 
-        # Decompress if zlib compressed
-        if chunk_data and chunk_data[0] == 2:
-            try:
-                chunk_data = b"\x00" + zlib.decompress(chunk_data[5:])
-            except:
-                pass
-
-        # Parse chunks
-        if chunk_type == "BASE" and chunk_data and chunk_data[0] == 0:
+        # Parse chunk based on type
+        if chunk_type == "BASE" and len(chunk_data) > 1:
+            # Format byte + padding + ASCII bases
             result["bases"] = chunk_data[2:].decode("ascii", errors="ignore")
 
-        elif chunk_type == "TEXT" and chunk_data and chunk_data[0] == 0:
-            items = chunk_data[2:-2].split(b"\x00")
+        elif chunk_type == "BPOS" and len(chunk_data) > 4:
+            # Format byte + 3 padding + 4-byte positions
+            positions = []
+            for i in range(4, len(chunk_data), 4):
+                if i + 4 <= len(chunk_data):
+                    pos = struct.unpack(">I", chunk_data[i : i + 4])[0]
+                    positions.append(pos)
+            result["positions"] = positions
+
+        elif chunk_type == "CNF4" and len(chunk_data) > 1:
+            # Format byte + confidence values (1 byte per base)
+            # First value is confidence of called base, then A/C/G/T values
+            confidence = list(chunk_data[1:])
+            result["confidence"] = confidence
+
+        elif chunk_type == "SMP4" and len(chunk_data) > 2:
+            # Format byte + padding + interleaved ACGT 16-bit samples
+            sample_data = chunk_data[2:]
+            trace_len = len(sample_data) // 8  # 4 channels * 2 bytes
+            samples: Dict[str, list] = {"A": [], "C": [], "G": [], "T": []}
+            for i, base in enumerate(["A", "C", "G", "T"]):
+                start = i * trace_len * 2
+                for j in range(0, trace_len * 2, 2):
+                    if start + j + 2 <= len(sample_data):
+                        val = struct.unpack(">H", sample_data[start + j : start + j + 2])[0]
+                        samples[base].append(val)
+            result["samples"] = samples
+
+        elif chunk_type == "SAMP" and meta_data and len(chunk_data) > 2:
+            # Metadata: 4-byte channel name (e.g., "A\x00\x00\x00")
+            # Data: Format byte + padding + 16-bit samples
+            channel = meta_data[0:1].decode("ascii", errors="ignore")
+            if channel in "ACGT":
+                sample_data = chunk_data[2:]
+                trace = []
+                for j in range(0, len(sample_data), 2):
+                    if j + 2 <= len(sample_data):
+                        val = struct.unpack(">H", sample_data[j : j + 2])[0]
+                        trace.append(val)
+                if "samples" not in result:
+                    result["samples"] = {}
+                result["samples"][channel] = trace
+
+        elif chunk_type == "TEXT" and len(chunk_data) > 2:
+            # Format byte + padding + null-terminated key-value pairs
+            items = chunk_data[2:].rstrip(b"\x00").split(b"\x00")
             text = {}
             for i in range(0, len(items) - 1, 2):
                 key = items[i].decode("ascii", errors="ignore")
                 val = items[i + 1].decode("ascii", errors="ignore")
-                text[key] = val
+                if key:
+                    text[key] = val
             result["text"] = text
 
-        elif chunk_type == "SMP4":
-            trace_len = len(chunk_data) // 8
-            samples = {}
-            for i, base in enumerate(["A", "C", "G", "T"]):
-                start = i * trace_len * 2
-                trace = [
-                    struct.unpack(">H", chunk_data[start + j : start + j + 2])[0]
-                    for j in range(0, trace_len * 2, 2)
-                ]
-                samples[base] = trace
-            result["samples"] = samples
-
         elif chunk_type == "CLIP" and len(chunk_data) >= 9:
+            # Format byte + left (4) + right (4)
             result["clip"] = {
                 "left": struct.unpack(">I", chunk_data[1:5])[0],
                 "right": struct.unpack(">I", chunk_data[5:9])[0],
             }
+
+        elif chunk_type == "COMM" and len(chunk_data) > 1:
+            # Format byte + free text
+            comment = chunk_data[1:].decode("ascii", errors="ignore").rstrip("\x00")
+            if "comments" not in result:
+                result["comments"] = []
+            result["comments"].append(comment)
 
         offset += data_len
 
