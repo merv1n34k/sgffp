@@ -8,6 +8,7 @@ Block 30: History content - nested blocks within nodes (features, primers, etc.)
 """
 
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List, Any, Optional, Iterator
 
 from .base import SgffModel
@@ -24,7 +25,7 @@ from .trace import SgffTraceList
 # -----------------------------------------------------------------------------
 
 
-class HistoryOperation:
+class HistoryOperation(str, Enum):
     """Known history operation types"""
 
     INVALID = "invalid"  # Root/original import
@@ -34,6 +35,21 @@ class HistoryOperation:
     AMPLIFY = "amplifyFragment"
     INSERT = "insertFragment"
     REPLACE = "replace"
+    DIGEST = "digest"
+    LIGATE = "ligate"
+    GATEWAY_LR = "gatewayLR"
+    GATEWAY_BP = "gatewayBP"
+    GIBSON = "gibsonAssembly"
+    GOLDEN_GATE = "goldenGateAssembly"
+    RESTRICTION_CLONE = "restrictionClone"
+    TA_CLONE = "taClone"
+    TOPO_CLONE = "topoClone"
+    IN_FUSION = "inFusion"
+
+    @classmethod
+    def _missing_(cls, value: str) -> "HistoryOperation":
+        """Return INVALID for unknown operations"""
+        return cls.INVALID
 
 
 # -----------------------------------------------------------------------------
@@ -72,6 +88,11 @@ class SgffInputSummary:
     val1: int  # start position
     val2: int  # end position
     enzymes: List[tuple] = field(default_factory=list)  # [(name, site_count), ...]
+
+    @property
+    def enzyme_names(self) -> List[str]:
+        """List of enzyme names used in this operation"""
+        return [name for name, _ in self.enzymes]
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffInputSummary":
@@ -324,13 +345,13 @@ class SgffHistoryTree:
         self, from_node: Optional[SgffHistoryTreeNode] = None
     ) -> Iterator[SgffHistoryTreeNode]:
         """
-        Iterate all nodes depth-first.
+        Iterate nodes in pre-order (parent before children).
 
         Args:
             from_node: Starting node (defaults to root)
 
         Yields:
-            Each node in depth-first order (current before children)
+            Each node in pre-order (current state first, then previous states)
         """
         start = from_node or self.root
         if not start:
@@ -339,6 +360,28 @@ class SgffHistoryTree:
         yield start
         for child in start.children:
             yield from self.walk(child)
+
+    def walk_reverse(
+        self, from_node: Optional[SgffHistoryTreeNode] = None
+    ) -> Iterator[SgffHistoryTreeNode]:
+        """
+        Iterate nodes in post-order (children before parent).
+
+        Useful for processing inputs before outputs (chronological order).
+
+        Args:
+            from_node: Starting node (defaults to root)
+
+        Yields:
+            Each node in post-order (oldest states first, current last)
+        """
+        start = from_node or self.root
+        if not start:
+            return
+
+        for child in start.children:
+            yield from self.walk_reverse(child)
+        yield start
 
     def ancestors(self, node_id: int) -> List[SgffHistoryTreeNode]:
         """
@@ -649,9 +692,24 @@ class SgffHistory(SgffModel):
         return self.nodes.get(index)
 
     def get_sequence_at(self, index: int) -> Optional[str]:
-        """Get sequence at specific history node"""
+        """
+        Get sequence at specific history node.
+
+        For the root node (current state), returns the main file sequence
+        if no history node exists for that index.
+        """
         node = self.get_node(index)
-        return node.sequence if node else None
+        if node and node.sequence:
+            return node.sequence
+
+        # For root node, fall back to main sequence
+        if self.tree and self.tree.root and self.tree.root.id == index:
+            from .sequence import SgffSequence
+            main_seq = SgffSequence(self._blocks)
+            if main_seq.value:
+                return main_seq.value
+
+        return None
 
     def add_node(self, node: SgffHistoryNode) -> int:
         """Add a new history node"""
