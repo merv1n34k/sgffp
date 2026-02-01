@@ -1,6 +1,6 @@
 [project]
 name = "sgffp"
-version = "0.10.0"
+version = "0.11.0"
 description = "Read, write, and manipulate SnapGene files (.dna, .rna, .prot)"
 readme = "README.md"
 license = {text = "MIT"}
@@ -46,3 +46,8 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[dependency-groups]
+dev = [
+    "ipython>=9.9.0",
+]
