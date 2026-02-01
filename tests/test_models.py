@@ -23,6 +23,7 @@ from sgffp.models import (
     SgffAlignment,
     SgffAlignmentList,
     SgffTrace,
+    SgffTraceList,
     SgffTraceClip,
     SgffTraceSamples,
 )
@@ -178,7 +179,8 @@ class TestSgffHistoryNode:
         assert node.sequence_type == 0
         assert node.length == 4
         assert node.content is not None
-        assert node.properties == {"test": "value"}
+        assert node.content.has_properties
+        assert node.properties.exists
 
     def test_to_dict(self):
         """Convert node back to dict"""
@@ -484,10 +486,10 @@ class TestSgffHistoryNodeContent:
         """Empty data creates empty content"""
         content = SgffHistoryNodeContent.from_dict({})
         assert not content.exists
-        assert content.properties is None
-        assert content.primers is None
-        assert content.notes is None
-        assert content.features == []
+        assert not content.has_features
+        assert not content.has_primers
+        assert not content.has_notes
+        assert len(content.features) == 0
 
     def test_parse_content(self):
         """Parse content from node_info"""
@@ -498,20 +500,46 @@ class TestSgffHistoryNodeContent:
         }]}
         content = SgffHistoryNodeContent.from_dict(data)
         assert content.exists
-        assert content.properties is not None
-        assert content.primers is not None
-        assert content.notes is not None
+        assert content.has_properties
+        assert content.has_primers
+        assert content.has_notes
 
     def test_to_dict(self):
         """Serialize content back to dict"""
-        content = SgffHistoryNodeContent(
-            properties={"test": "value"},
-            primers={"Primers": {}},
-        )
+        blocks = {
+            8: [{"test": "value"}],
+            5: [{"Primers": {}}],
+        }
+        content = SgffHistoryNodeContent(blocks)
         data = content.to_dict()
         assert 30 in data
         assert 8 in data[30][0]
         assert 5 in data[30][0]
+
+    def test_block_access(self):
+        """Access raw blocks"""
+        blocks = {10: [{"features": []}], 18: [{"bases": "ATCG"}]}
+        content = SgffHistoryNodeContent(blocks)
+        assert content.block_types == [10, 18]
+        assert 10 in content
+        assert 18 in content
+        assert 99 not in content
+
+    def test_model_accessors(self):
+        """Model accessors return appropriate types"""
+        blocks = {10: [{"features": [{"name": "test", "type": "gene"}]}]}
+        content = SgffHistoryNodeContent(blocks)
+        assert len(content.features) == 1
+        assert content.features[0].name == "test"
+
+    def test_traces_accessor(self):
+        """Multiple traces accessible via traces property"""
+        blocks = {18: [{"bases": "ATCG"}, {"bases": "GGGG"}]}
+        content = SgffHistoryNodeContent(blocks)
+        assert content.has_traces
+        assert len(content.traces) == 2
+        assert content.traces[0].bases == "ATCG"
+        assert content.traces[1].bases == "GGGG"
 
 
 class TestHistoryOperation:
@@ -650,30 +678,18 @@ class TestSgffTraceSamples:
 
 
 class TestSgffTrace:
-    def test_empty_blocks(self):
-        """Empty blocks return empty trace"""
-        trace = SgffTrace({})
-        assert trace.bases is None
-        assert trace.positions is None
-        assert trace.confidence is None
-        assert trace.samples is None
-        assert trace.clip is None
-        assert trace.length == 0
-
-    def test_load_trace(self):
-        """Load trace from block 18"""
-        blocks = {
-            18: [{
-                "bases": "ATCGATCG",
-                "positions": [10, 20, 30, 40, 50, 60, 70, 80],
-                "confidence": [40, 45, 50, 55, 40, 45, 50, 55],
-                "samples": {"A": [1, 2], "C": [3, 4], "G": [5, 6], "T": [7, 8]},
-                "clip": {"left": 5, "right": 100},
-                "text": {"MACH": "ABI3730"},
-                "comments": ["Test trace"],
-            }]
+    def test_from_dict(self):
+        """Create trace from dict"""
+        data = {
+            "bases": "ATCGATCG",
+            "positions": [10, 20, 30, 40, 50, 60, 70, 80],
+            "confidence": [40, 45, 50, 55, 40, 45, 50, 55],
+            "samples": {"A": [1, 2], "C": [3, 4], "G": [5, 6], "T": [7, 8]},
+            "clip": {"left": 5, "right": 100},
+            "text": {"MACH": "ABI3730"},
+            "comments": ["Test trace"],
         }
-        trace = SgffTrace(blocks)
+        trace = SgffTrace.from_dict(data)
         assert trace.bases == "ATCGATCG"
         assert trace.sequence == "ATCGATCG"
         assert trace.length == 8
@@ -687,63 +703,113 @@ class TestSgffTrace:
         assert trace.text == {"MACH": "ABI3730"}
         assert trace.comments == ["Test trace"]
 
+    def test_to_dict(self):
+        """Convert trace to dict"""
+        trace = SgffTrace(
+            bases="ATCG",
+            positions=[10, 20, 30, 40],
+            confidence=[40, 45, 50, 55],
+            samples=SgffTraceSamples(a=[1, 2], c=[3, 4], g=[5, 6], t=[7, 8]),
+            clip=SgffTraceClip(left=5, right=100),
+            text={"MACH": "ABI3730"},
+            comments=["Test"],
+        )
+        data = trace.to_dict()
+        assert data["bases"] == "ATCG"
+        assert data["positions"] == [10, 20, 30, 40]
+        assert data["samples"]["A"] == [1, 2]
+        assert data["clip"]["left"] == 5
+
+    def test_empty_trace(self):
+        """Empty trace has defaults"""
+        trace = SgffTrace()
+        assert trace.bases == ""
+        assert trace.positions == []
+        assert trace.confidence == []
+        assert trace.samples is None
+        assert trace.clip is None
+        assert trace.length == 0
+
     def test_get_confidence_at(self):
         """Get confidence at specific base"""
-        blocks = {18: [{"bases": "ATCG", "confidence": [10, 20, 30, 40]}]}
-        trace = SgffTrace(blocks)
+        trace = SgffTrace(bases="ATCG", confidence=[10, 20, 30, 40])
         assert trace.get_confidence_at(0) == 10
         assert trace.get_confidence_at(2) == 30
         assert trace.get_confidence_at(10) is None
 
     def test_get_position_at(self):
         """Get sample position at specific base"""
-        blocks = {18: [{"bases": "ATCG", "positions": [100, 200, 300, 400]}]}
-        trace = SgffTrace(blocks)
+        trace = SgffTrace(bases="ATCG", positions=[100, 200, 300, 400])
         assert trace.get_position_at(0) == 100
         assert trace.get_position_at(3) == 400
         assert trace.get_position_at(10) is None
 
     def test_get_metadata(self):
         """Get metadata by key"""
-        blocks = {18: [{"text": {"MACH": "ABI3730", "LANE": "5"}}]}
-        trace = SgffTrace(blocks)
+        trace = SgffTrace(text={"MACH": "ABI3730", "LANE": "5"})
         assert trace.get_metadata("MACH") == "ABI3730"
         assert trace.get_metadata("LANE") == "5"
         assert trace.get_metadata("MISSING", "default") == "default"
 
-    def test_set_metadata(self):
-        """Set metadata value"""
-        blocks = {18: [{"bases": "ATCG"}]}
-        trace = SgffTrace(blocks)
-        trace.set_metadata("MACH", "ABI3730")
-        assert trace.text["MACH"] == "ABI3730"
-        assert blocks[18][0]["text"]["MACH"] == "ABI3730"
-
-    def test_modify_bases(self):
-        """Modify bases updates blocks"""
-        blocks = {18: [{"bases": "ATCG"}]}
-        trace = SgffTrace(blocks)
-        trace.bases = "GGGG"
-        assert blocks[18][0]["bases"] == "GGGG"
-
-    def test_modify_samples(self):
-        """Modify samples updates blocks"""
-        blocks = {18: [{"bases": "AT"}]}
-        trace = SgffTrace(blocks)
-        trace.samples = SgffTraceSamples(a=[1, 2], c=[3, 4], g=[5, 6], t=[7, 8])
-        assert blocks[18][0]["samples"]["A"] == [1, 2]
-
-    def test_modify_clip(self):
-        """Modify clip updates blocks"""
-        blocks = {18: [{"bases": "AT"}]}
-        trace = SgffTrace(blocks)
-        trace.clip = SgffTraceClip(left=10, right=90)
-        assert blocks[18][0]["clip"]["left"] == 10
-
     def test_repr(self):
         """String representation"""
-        blocks = {18: [{"bases": "ATCG", "samples": {"A": [1, 2, 3]}}]}
-        trace = SgffTrace(blocks)
+        trace = SgffTrace(bases="ATCG", samples=SgffTraceSamples(a=[1, 2, 3]))
         assert "SgffTrace" in repr(trace)
         assert "bases=4" in repr(trace)
         assert "samples=3" in repr(trace)
+
+
+class TestSgffTraceList:
+    def test_empty_blocks(self):
+        """Empty blocks return empty list"""
+        traces = SgffTraceList({})
+        assert len(traces) == 0
+
+    def test_load_traces(self):
+        """Load traces from block 18"""
+        blocks = {18: [
+            {"bases": "ATCG"},
+            {"bases": "GGGG"},
+        ]}
+        traces = SgffTraceList(blocks)
+        assert len(traces) == 2
+        assert traces[0].bases == "ATCG"
+        assert traces[1].bases == "GGGG"
+
+    def test_add_trace(self):
+        """Add trace to list"""
+        blocks = {18: [{"bases": "ATCG"}]}
+        traces = SgffTraceList(blocks)
+        traces.add(SgffTrace(bases="GGGG"))
+        assert len(traces) == 2
+        assert blocks[18][1]["bases"] == "GGGG"
+
+    def test_remove_trace(self):
+        """Remove trace from list"""
+        blocks = {18: [{"bases": "ATCG"}, {"bases": "GGGG"}]}
+        traces = SgffTraceList(blocks)
+        traces.remove(0)
+        assert len(traces) == 1
+        assert traces[0].bases == "GGGG"
+
+    def test_clear_traces(self):
+        """Clear all traces"""
+        blocks = {18: [{"bases": "ATCG"}]}
+        traces = SgffTraceList(blocks)
+        traces.clear()
+        assert len(traces) == 0
+        assert 18 not in blocks
+
+    def test_iterate(self):
+        """Iterate over traces"""
+        blocks = {18: [{"bases": "A"}, {"bases": "T"}, {"bases": "C"}]}
+        traces = SgffTraceList(blocks)
+        bases = [t.bases for t in traces]
+        assert bases == ["A", "T", "C"]
+
+    def test_repr(self):
+        """String representation"""
+        blocks = {18: [{"bases": "ATCG"}, {"bases": "GGGG"}]}
+        traces = SgffTraceList(blocks)
+        assert "SgffTraceList" in repr(traces)
+        assert "count=2" in repr(traces)
