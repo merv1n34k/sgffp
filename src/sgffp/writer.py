@@ -127,6 +127,10 @@ class SgffWriter:
         if block_type == 30:
             return self._serialize_lzma_nested(data)
 
+        # Trace (18) - ZTR binary format
+        if block_type == 18:
+            return self._serialize_ztr(data)
+
         # XML blocks
         if block_type in (5, 6, 8, 17):
             return self._serialize_xml(data)
@@ -298,6 +302,92 @@ class SgffWriter:
                     buf.write(block_data)
 
         return lzma.compress(buf.getvalue())
+
+    def _serialize_ztr(self, data: Dict) -> bytes:
+        """Serialize trace data to ZTR format (block 18)"""
+        buf = BytesIO()
+
+        # ZTR magic and version
+        buf.write(b"\xaeZTR\r\n\x1a\n")  # Magic
+        buf.write(struct.pack(">BB", 1, 2))  # Version 1.2
+
+        # Helper to write a chunk
+        def write_chunk(chunk_type: str, chunk_data: bytes, metadata: bytes = b""):
+            # Type (4 bytes, space-padded)
+            type_bytes = chunk_type.encode("ascii").ljust(4)[:4]
+            buf.write(type_bytes)
+            # Metadata length + metadata
+            buf.write(struct.pack(">I", len(metadata)))
+            if metadata:
+                buf.write(metadata)
+            # Data length + data
+            buf.write(struct.pack(">I", len(chunk_data)))
+            buf.write(chunk_data)
+
+        # BASE chunk: format byte (0) + padding (1) + ASCII bases
+        if data.get("bases"):
+            bases = data["bases"].encode("ascii")
+            chunk_data = b"\x00\x00" + bases
+            write_chunk("BASE", chunk_data)
+
+        # BPOS chunk: format byte (0) + 3 padding + 4-byte positions
+        if data.get("positions"):
+            positions = data["positions"]
+            chunk_data = b"\x00\x00\x00\x00"
+            for pos in positions:
+                chunk_data += struct.pack(">I", pos)
+            write_chunk("BPOS", chunk_data)
+
+        # CNF4 chunk: format byte (0) + confidence values (1 byte per base)
+        if data.get("confidence"):
+            confidence = data["confidence"]
+            chunk_data = b"\x00" + bytes(confidence)
+            write_chunk("CNF4", chunk_data)
+
+        # SMP4 chunk: format byte (0) + padding + channel data
+        if data.get("samples"):
+            samples = data["samples"]
+            # Check if all channels present (use SMP4), otherwise use SAMP
+            if all(ch in samples for ch in ["A", "C", "G", "T"]):
+                chunk_data = b"\x00\x00"
+                for channel in ["A", "C", "G", "T"]:
+                    for val in samples.get(channel, []):
+                        chunk_data += struct.pack(">H", val)
+                write_chunk("SMP4", chunk_data)
+            else:
+                # Individual SAMP chunks per channel
+                for channel in ["A", "C", "G", "T"]:
+                    if samples.get(channel):
+                        chunk_data = b"\x00\x00"
+                        for val in samples[channel]:
+                            chunk_data += struct.pack(">H", val)
+                        # Metadata is 4-byte channel name
+                        metadata = channel.encode("ascii") + b"\x00\x00\x00"
+                        write_chunk("SAMP", chunk_data, metadata)
+
+        # TEXT chunk: format byte (0) + padding + null-terminated key-value pairs
+        if data.get("text"):
+            text_data = b"\x00\x00"
+            for key, val in data["text"].items():
+                text_data += key.encode("ascii") + b"\x00"
+                text_data += str(val).encode("ascii") + b"\x00"
+            write_chunk("TEXT", text_data)
+
+        # CLIP chunk: format byte (0) + left (4) + right (4)
+        if data.get("clip"):
+            clip = data["clip"]
+            chunk_data = b"\x00"
+            chunk_data += struct.pack(">I", clip.get("left", 0))
+            chunk_data += struct.pack(">I", clip.get("right", 0))
+            write_chunk("CLIP", chunk_data)
+
+        # COMM chunks: format byte (0) + free text
+        if data.get("comments"):
+            for comment in data["comments"]:
+                chunk_data = b"\x00" + comment.encode("ascii")
+                write_chunk("COMM", chunk_data)
+
+        return buf.getvalue()
 
     @classmethod
     def to_file(cls, sgff: SgffObject, filepath: Union[str, Path]) -> None:
