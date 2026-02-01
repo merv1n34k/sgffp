@@ -11,6 +11,12 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Iterator
 
 from .base import SgffModel
+from .feature import SgffFeatureList
+from .primer import SgffPrimerList
+from .notes import SgffNotes
+from .properties import SgffProperties
+from .alignment import SgffAlignmentList
+from .trace import SgffTraceList
 
 
 # -----------------------------------------------------------------------------
@@ -373,19 +379,16 @@ class SgffHistoryTree:
 # -----------------------------------------------------------------------------
 
 
-@dataclass
 class SgffHistoryNodeContent:
     """
     Content snapshot from block 30 nested in block 11.
 
-    Contains the state of features, primers, notes, etc. at a history point.
+    Wraps a blocks dict (like SgffObject) and provides model accessors.
+    Each history node is essentially a full SnapGene file state.
     """
 
-    properties: Optional[Dict] = None  # Block 8: AdditionalSequenceProperties
-    primers: Optional[Dict] = None  # Block 5: Primers
-    notes: Optional[Dict] = None  # Block 6: Notes
-    features: List[Dict] = field(default_factory=list)  # Block 10: Features
-    alignable: Optional[Dict] = None  # Block 17: AlignableSequences
+    def __init__(self, blocks: Dict[int, List[Any]] = None):
+        self._blocks = blocks or {}
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffHistoryNodeContent":
@@ -398,71 +401,100 @@ class SgffHistoryNodeContent:
         # Content is nested under 30 key (integer, not string)
         content_list = data.get(30, data.get("30", []))
         if not content_list:
-            return cls()
+            return cls({})
 
         content = content_list[0] if content_list else {}
-
-        def get_block(block_id: int) -> Optional[Any]:
-            """Get block data, trying both int and str keys"""
-            val = content.get(block_id, content.get(str(block_id)))
-            if val and isinstance(val, list):
-                return val[0] if val else None
-            return val
-
-        # Block 8: AdditionalSequenceProperties
-        properties = get_block(8)
-
-        # Block 5: Primers
-        primers = get_block(5)
-
-        # Block 6: Notes
-        notes = get_block(6)
-
-        # Block 10: Features
-        features = []
-        features_data = content.get(10, content.get("10"))
-        if features_data:
-            if isinstance(features_data, list):
-                features = features_data
-            else:
-                features = [features_data]
-
-        # Block 17: AlignableSequences
-        alignable = get_block(17)
-
-        return cls(
-            properties=properties,
-            primers=primers,
-            notes=notes,
-            features=features,
-            alignable=alignable,
-        )
+        return cls(content)
 
     def to_dict(self) -> Dict:
         """Serialize back to node_info format"""
-        content: Dict[int, List] = {}
-
-        if self.properties:
-            content[8] = [self.properties]
-        if self.primers:
-            content[5] = [self.primers]
-        if self.notes:
-            content[6] = [self.notes]
-        if self.features:
-            content[10] = self.features
-        if self.alignable:
-            content[17] = [self.alignable]
-
-        if content:
-            return {30: [content]}
+        if self._blocks:
+            return {30: [self._blocks]}
         return {}
+
+    @property
+    def blocks(self) -> Dict[int, List[Any]]:
+        """Raw blocks dict access"""
+        return self._blocks
+
+    @property
+    def block_types(self) -> List[int]:
+        """List of block types present"""
+        return list(self._blocks.keys())
+
+    # -------------------------------------------------------------------------
+    # Model accessors (same pattern as SgffObject)
+    # -------------------------------------------------------------------------
+
+    @property
+    def features(self) -> SgffFeatureList:
+        return SgffFeatureList(self._blocks)
+
+    @property
+    def primers(self) -> SgffPrimerList:
+        return SgffPrimerList(self._blocks)
+
+    @property
+    def notes(self) -> SgffNotes:
+        return SgffNotes(self._blocks)
+
+    @property
+    def properties(self) -> SgffProperties:
+        return SgffProperties(self._blocks)
+
+    @property
+    def alignments(self) -> SgffAlignmentList:
+        return SgffAlignmentList(self._blocks)
+
+    @property
+    def traces(self) -> SgffTraceList:
+        return SgffTraceList(self._blocks)
+
+    # -------------------------------------------------------------------------
+    # Existence checks (same pattern as SgffObject)
+    # -------------------------------------------------------------------------
 
     @property
     def exists(self) -> bool:
         """Check if any content is present"""
-        return bool(
-            self.properties or self.primers or self.notes or self.features or self.alignable
-        )
+        return bool(self._blocks)
+
+    @property
+    def has_features(self) -> bool:
+        return 10 in self._blocks
+
+    @property
+    def has_primers(self) -> bool:
+        return 5 in self._blocks
+
+    @property
+    def has_notes(self) -> bool:
+        return 6 in self._blocks
+
+    @property
+    def has_properties(self) -> bool:
+        return 8 in self._blocks
+
+    @property
+    def has_alignments(self) -> bool:
+        return 17 in self._blocks
+
+    @property
+    def has_traces(self) -> bool:
+        return 18 in self._blocks
+
+    # -------------------------------------------------------------------------
+    # Dunder methods
+    # -------------------------------------------------------------------------
+
+    def __bool__(self) -> bool:
+        return self.exists
+
+    def __contains__(self, block_id: int) -> bool:
+        return block_id in self._blocks
+
+    def __repr__(self) -> str:
+        return f"SgffHistoryNodeContent(blocks={self.block_types})"
 
 
 @dataclass
@@ -484,24 +516,29 @@ class SgffHistoryNode:
     tree_node: Optional[SgffHistoryTreeNode] = field(default=None, repr=False)
 
     @property
-    def features(self) -> List[Dict]:
+    def features(self) -> SgffFeatureList:
         """Shortcut to content.features"""
-        return self.content.features if self.content else []
+        return self.content.features if self.content else SgffFeatureList({})
 
     @property
-    def primers(self) -> Optional[Dict]:
+    def primers(self) -> SgffPrimerList:
         """Shortcut to content.primers"""
-        return self.content.primers if self.content else None
+        return self.content.primers if self.content else SgffPrimerList({})
 
     @property
-    def notes(self) -> Optional[Dict]:
+    def notes(self) -> SgffNotes:
         """Shortcut to content.notes"""
-        return self.content.notes if self.content else None
+        return self.content.notes if self.content else SgffNotes({})
 
     @property
-    def properties(self) -> Optional[Dict]:
+    def properties(self) -> SgffProperties:
         """Shortcut to content.properties"""
-        return self.content.properties if self.content else None
+        return self.content.properties if self.content else SgffProperties({})
+
+    @property
+    def traces(self) -> SgffTraceList:
+        """Shortcut to content.traces"""
+        return self.content.traces if self.content else SgffTraceList({})
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffHistoryNode":
