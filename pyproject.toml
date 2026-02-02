@@ -1,6 +1,6 @@
 [project]
 name = "sgffp"
-version = "0.13.0"
+version = "0.13.1"
 description = "Read, write, and manipulate SnapGene files (.dna, .rna, .prot)"
 readme = "README.md"
 license = {text = "MIT"}
@@ -17,7 +17,7 @@ classifiers = [
     "Topic :: File Formats",
 ]
 dependencies = [
-    "biopython>=1.86",
+    "biopython>=1.85",
     "html2text>=2025.4.15",
     "matplotlib>=3.10.7",
     "numpy>=2.3.4",
