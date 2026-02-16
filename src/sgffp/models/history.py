@@ -524,7 +524,7 @@ class SgffHistoryNodeContent:
 
     @property
     def has_traces(self) -> bool:
-        return 18 in self._blocks
+        return 16 in self._blocks
 
     # -------------------------------------------------------------------------
     # Dunder methods

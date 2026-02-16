@@ -158,28 +158,21 @@ class SgffTrace:
 
 
 class SgffTraceList(SgffModel):
-    """Trace list wrapper for block 16 (container) and block 18 (standalone)"""
+    """Trace list wrapper for block 16 (trace container)"""
 
-    BLOCK_IDS = (16, 18)
+    BLOCK_IDS = (16,)
 
     def __init__(self, blocks: Dict[int, List[Any]]):
         super().__init__(blocks)
         self._items: Optional[List[SgffTrace]] = None
 
     def _load(self) -> List[SgffTrace]:
-        """Load traces from block 16 containers and standalone block 18 items"""
+        """Load traces from block 16 containers"""
         traces = []
-
-        # Block 16: trace containers with nested block 18
         for container in self._get_blocks(16):
             nested = container.get("blocks", {})
             for trace_data in nested.get(18, []):
                 traces.append(SgffTrace.from_dict(trace_data))
-
-        # Block 18: standalone traces (e.g. inside history node content)
-        for trace_data in self._get_blocks(18):
-            traces.append(SgffTrace.from_dict(trace_data))
-
         return traces
 
     @property
@@ -219,8 +212,6 @@ class SgffTraceList(SgffModel):
             self._set_blocks(16, containers)
         else:
             self._remove_block(16)
-        # Clear any standalone block 18 (only used inside history node content)
-        self._remove_block(18)
 
     def __iter__(self) -> Iterator[SgffTrace]:
         return iter(self.items)

@@ -534,7 +534,10 @@ class TestSgffHistoryNodeContent:
 
     def test_traces_accessor(self):
         """Multiple traces accessible via traces property"""
-        blocks = {18: [{"bases": "ATCG"}, {"bases": "GGGG"}]}
+        blocks = {16: [
+            {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
+            {"flags": 0, "blocks": {18: [{"bases": "GGGG"}]}},
+        ]}
         content = SgffHistoryNodeContent(blocks)
         assert content.has_traces
         assert len(content.traces) == 2
@@ -776,11 +779,11 @@ class TestSgffTraceList:
         assert traces[0].bases == "ATCG"
         assert traces[1].bases == "GGGG"
 
-    def test_load_traces_from_standalone_block_18(self):
-        """Load traces from standalone block 18 (e.g. inside history node content)"""
-        blocks = {18: [{"bases": "ATCG"}, {"bases": "GGGG"}]}
+    def test_load_from_single_container(self):
+        """Load single trace from block 16 container"""
+        blocks = {16: [{"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}}]}
         traces = SgffTraceList(blocks)
-        assert len(traces) == 2
+        assert len(traces) == 1
         assert traces[0].bases == "ATCG"
 
     def test_add_trace(self):
