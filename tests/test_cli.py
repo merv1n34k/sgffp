@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 import pytest
 
-from sgffp.cli import cmd_parse, cmd_info, cmd_check, cmd_filter, main
+from sgffp.cli import cmd_parse, cmd_info, cmd_tree, cmd_check, cmd_filter, main
 
 
 class MockArgs:
@@ -121,6 +121,51 @@ class TestCheckCommand:
         args = MockArgs(input=str(test_dna), list=False, dump=False)
         cmd_check(args)
         # Should not raise an exception
+
+
+# =============================================================================
+# Tree Command Tests
+# =============================================================================
+
+
+class TestTreeCommand:
+    def test_tree_output(self, test3_dna, capsys):
+        """Tree displays timeline with operations"""
+        args = MockArgs(input=str(test3_dna), verbose=False)
+        cmd_tree(args)
+
+        captured = capsys.readouterr()
+        assert "test.rna" in captured.out
+        assert "makeDna" in captured.out
+        assert "amplifyFragment" in captured.out
+        assert "test_ampf.dna" in captured.out
+
+    def test_tree_verbose(self, test3_dna, capsys):
+        """Verbose tree shows operation details"""
+        args = MockArgs(input=str(test3_dna), verbose=True)
+        cmd_tree(args)
+
+        captured = capsys.readouterr()
+        assert "oligo:" in captured.out
+
+    def test_tree_no_history(self, test_dna, capsys):
+        """Tree on file without history exits with error"""
+        # Create a minimal file with only block 0
+        with tempfile.NamedTemporaryFile(suffix=".dna", delete=False) as f:
+            output_path = f.name
+
+        try:
+            from sgffp.cli import cmd_filter
+            filter_args = MockArgs(input=str(test_dna), keep="0", output=output_path)
+            cmd_filter(filter_args)
+            capsys.readouterr()  # clear filter output
+
+            args = MockArgs(input=output_path, verbose=False)
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_tree(args)
+            assert exc_info.value.code == 1
+        finally:
+            Path(output_path).unlink(missing_ok=True)
 
 
 # =============================================================================

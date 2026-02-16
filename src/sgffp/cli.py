@@ -94,6 +94,54 @@ def cmd_filter(args):
     print(f"Filtered file written to {args.output}")
 
 
+def _format_node(node):
+    """Format a node's basic info"""
+    topo = "circular" if node.circular else "linear"
+    return f"[{node.id}] {node.name} ({node.seq_len}bp, {topo})"
+
+
+def _print_tree(root, verbose=False):
+    """Print history tree in timeline order (chronological, leaves first)"""
+    # Walk post-order: inputs before outputs (chronological)
+    for child in root.children:
+        _print_tree(child, verbose=verbose)
+
+    if root.children:
+        # Non-leaf: show operation arrow
+        print(f"  \u2514\u2500\u2500 {root.operation} \u2192 {_format_node(root)}")
+        if verbose:
+            for summary in root.input_summaries:
+                enzymes = ", ".join(f"{n} ({c})" for n, c in summary.enzymes) if summary.enzymes else ""
+                parts = [summary.manipulation, f"{summary.val1}..{summary.val2}"]
+                if enzymes:
+                    parts.append(enzymes)
+                print(f"      {' '.join(parts)}")
+            for oligo in root.oligos:
+                print(f"      oligo: {oligo.name} ({len(oligo.sequence)}bp)")
+    else:
+        # Leaf: plain input
+        label = _format_node(root)
+        if root.resurrectable:
+            label += " [resurrectable]"
+        print(f"  {label}")
+
+
+def cmd_tree(args):
+    """Display history tree"""
+    sgff = SgffReader.from_file(args.input)
+
+    if not sgff.has_history:
+        print("No history tree", file=sys.stderr)
+        sys.exit(1)
+
+    tree = sgff.history.tree
+    if not tree or not tree.root:
+        print("No history tree", file=sys.stderr)
+        sys.exit(1)
+
+    _print_tree(tree.root, verbose=getattr(args, "verbose", False))
+
+
 def cmd_check(args):
     """Check for unknown/new block types"""
     found_blocks = {}
@@ -153,6 +201,11 @@ def main():
     p = subparsers.add_parser("info", help="Show file information")
     p.add_argument("input", help="Input SGFF file")
 
+    # Tree
+    p = subparsers.add_parser("tree", help="Display history tree")
+    p.add_argument("input", help="Input SGFF file")
+    p.add_argument("-v", "--verbose", action="store_true", help="Show operation details")
+
     # Check
     p = subparsers.add_parser(
         "check",
@@ -180,6 +233,7 @@ def main():
     commands = {
         "parse": cmd_parse,
         "info": cmd_info,
+        "tree": cmd_tree,
         "check": cmd_check,
         "filter": cmd_filter,
     }
