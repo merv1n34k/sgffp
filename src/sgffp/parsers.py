@@ -6,7 +6,10 @@ import struct
 import lzma
 import zlib
 from io import BytesIO
+import logging
 from typing import Dict, Tuple, Optional, Callable, Any, List
+
+logger = logging.getLogger(__name__)
 
 import xmltodict
 
@@ -20,19 +23,12 @@ def parse_blocks(stream) -> Dict[int, List[Any]]:
         if block_type is None:
             break
 
-        # Skip unknown blocks
-        if block_type not in SCHEME:
-            stream.read(block_length)
-            continue
-
-        length_override, parser = SCHEME[block_type]
-
-        if length_override is not None:
-            block_length = length_override
-
         data = stream.read(block_length)
 
+        # Skip unknown blocks
+        parser = SCHEME.get(block_type)
         if parser is None:
+            logger.debug("Skipping unknown block type %d (%d bytes)", block_type, block_length)
             continue
 
         parsed = parser(data)
@@ -137,7 +133,8 @@ def parse_xml(data: bytes) -> Optional[Dict]:
         xml_str = data.decode("utf-8", errors="ignore")
         parsed = xmltodict.parse(xml_str)
         return _clean_xml_dict(parsed)
-    except:
+    except Exception as e:
+        logger.debug("Failed to parse XML: %s", e)
         return None
 
 
@@ -147,7 +144,8 @@ def parse_lzma_xml(data: bytes) -> Optional[Dict]:
         decompressed = lzma.decompress(data)
         parsed = xmltodict.parse(decompressed.decode("utf-8", errors="ignore"))
         return _clean_xml_dict(parsed)
-    except:
+    except Exception as e:
+        logger.debug("Failed to parse LZMA XML: %s", e)
         return None
 
 
@@ -156,7 +154,8 @@ def parse_lzma_nested(data: bytes) -> Optional[Dict[int, List[Any]]]:
     try:
         decompressed = lzma.decompress(data)
         return parse_blocks(BytesIO(decompressed))
-    except:
+    except Exception as e:
+        logger.debug("Failed to parse LZMA nested blocks: %s", e)
         return None
 
 
@@ -486,22 +485,22 @@ def parse_history_node(data: bytes) -> Dict[str, Any]:
 # PARSING SCHEME
 # =============================================================================
 
-# Format: block_type -> (length_override, parser_function)
+# Format: block_type -> parser_function
 # Only known blocks are included - unknown blocks are skipped
-SCHEME: Dict[int, Tuple[Optional[int], Optional[Callable]]] = {
-    0: (None, parse_sequence),  #       DNA
-    1: (None, parse_compressed_dna),  # 2bit compressed DNA
-    5: (None, parse_xml),  #            Primers
-    6: (None, parse_xml),  #            Notes
-    7: (None, parse_lzma_xml),  #       History tree
-    8: (None, parse_xml),  #            Sequence properties
-    10: (None, parse_features),  #      Features
-    11: (None, parse_history_node),  #  History node container
-    16: (None, parse_trace_container),  # Trace container (nested 18 + 8)
-    17: (None, parse_xml),  #           Alignable sequences
-    18: (None, parse_ztr),  #           Sequence trace
-    21: (None, parse_sequence),  #      Protein
-    29: (None, parse_lzma_xml),  #      History modifier
-    30: (None, parse_lzma_nested),  #   History node content
-    32: (None, parse_sequence),  #      RNA
+SCHEME: Dict[int, Callable] = {
+    0: parse_sequence,           # DNA
+    1: parse_compressed_dna,     # 2bit compressed DNA
+    5: parse_xml,                # Primers
+    6: parse_xml,                # Notes
+    7: parse_lzma_xml,           # History tree
+    8: parse_xml,                # Sequence properties
+    10: parse_features,          # Features
+    11: parse_history_node,      # History node container
+    16: parse_trace_container,   # Trace container (nested 18 + 8)
+    17: parse_xml,               # Alignable sequences
+    18: parse_ztr,               # Sequence trace (inside block 16)
+    21: parse_sequence,          # Protein
+    29: parse_lzma_xml,          # History modifier
+    30: parse_lzma_nested,       # History node content
+    32: parse_sequence,          # RNA
 }

@@ -435,18 +435,15 @@ class TestScheme:
     def test_scheme_sequence_types(self):
         """Sequence types (0, 21, 32) use parse_sequence"""
         for block_type in [0, 21, 32]:
-            _, parser = SCHEME[block_type]
-            assert parser == parse_sequence
+            assert SCHEME[block_type] == parse_sequence
 
     def test_scheme_compressed_dna(self):
         """Type 1 uses parse_compressed_dna"""
-        _, parser = SCHEME[1]
-        assert parser == parse_compressed_dna
+        assert SCHEME[1] == parse_compressed_dna
 
     def test_scheme_features(self):
         """Type 10 uses parse_features"""
-        _, parser = SCHEME[10]
-        assert parser == parse_features
+        assert SCHEME[10] == parse_features
 
 
 # =============================================================================
