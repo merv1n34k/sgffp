@@ -56,6 +56,7 @@ def cmd_parse(args):
 def cmd_info(args):
     """Show file information"""
     sgff = _open_input(args.input)
+    verbose = getattr(args, "verbose", False)
 
     seq_type_names = {1: "DNA", 2: "RNA", 3: "Protein"}
     seq_type_name = seq_type_names.get(sgff.cookie.type_of_sequence, "Unknown")
@@ -79,12 +80,60 @@ def cmd_info(args):
     if sgff.has_primers:
         print(f"Primers: {len(sgff.primers)}")
 
+    # Traces
+    if sgff.has_traces:
+        print(f"Traces: {len(sgff.traces)}")
+
     # History
     if sgff.has_history:
         print(f"History: {len(sgff.history)} nodes")
 
     # Blocks summary
     print(f"Blocks: {', '.join(str(t) for t in sorted(sgff.types))}")
+
+    if not verbose:
+        return
+
+    # --- Verbose sections ---
+
+    # Notes
+    if sgff.has_notes:
+        notes = sgff.notes
+        print(f"\n--- Notes ---")
+        if notes.description:
+            print(f"  Description: {notes.description}")
+        if notes.created:
+            print(f"  Created: {notes.created}")
+        if notes.last_modified:
+            print(f"  Modified: {notes.last_modified}")
+        for key, val in notes.data.items():
+            if key not in ("Description", "Created", "LastModified"):
+                print(f"  {key}: {val}")
+
+    # Features
+    if sgff.has_features:
+        print(f"\n--- Features ({len(sgff.features)}) ---")
+        for f in sgff.features:
+            print(f"  [{f.strand}] {f.name} ({f.type}, {f.start}-{f.end})")
+
+    # Primers
+    if sgff.has_primers:
+        print(f"\n--- Primers ({len(sgff.primers)}) ---")
+        for p in sgff.primers:
+            print(f"  [{p.bind_strand}] {p.name} ({len(p.sequence)}bp)")
+
+    # Traces
+    if sgff.has_traces:
+        print(f"\n--- Traces ({len(sgff.traces)}) ---")
+        for i, t in enumerate(sgff.traces, 1):
+            print(f"  Trace {i}: {t.length} bases, {t.sample_count} samples")
+
+    # History
+    if sgff.has_history:
+        tree = sgff.history.tree
+        if tree and tree.root:
+            print(f"\n--- History ---")
+            _print_tree(tree.root)
 
 
 def cmd_filter(args):
@@ -216,6 +265,7 @@ def main():
     # Info
     p = subparsers.add_parser("info", help="Show file information")
     p.add_argument("input", nargs="?", default="-", help="Input SGFF file (default: stdin)")
+    p.add_argument("-v", "--verbose", action="store_true", help="Show detailed contents")
 
     # Tree
     p = subparsers.add_parser("tree", help="Display history tree")

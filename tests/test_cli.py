@@ -99,6 +99,24 @@ class TestInfoCommand:
         captured = capsys.readouterr()
         assert "Blocks:" in captured.out
 
+    def test_info_verbose(self, test3_dna, capsys):
+        """Verbose info shows detailed sections"""
+        args = MockArgs(input=str(test3_dna), verbose=True)
+        cmd_info(args)
+
+        captured = capsys.readouterr()
+        assert "--- Notes ---" in captured.out
+        assert "--- Primers" in captured.out
+        assert "--- History ---" in captured.out
+
+    def test_info_verbose_minimal(self, test_dna, capsys):
+        """Verbose on minimal file doesn't crash"""
+        args = MockArgs(input=str(test_dna), verbose=True)
+        cmd_info(args)
+
+        captured = capsys.readouterr()
+        assert "File:" in captured.out
+
 
 # =============================================================================
 # Check Command Tests

@@ -201,6 +201,14 @@ class SgffObject:
         return self._traces
 
     @property
+    def has_notes(self) -> bool:
+        return 6 in self.blocks
+
+    @property
+    def has_properties(self) -> bool:
+        return 8 in self.blocks
+
+    @property
     def has_history(self) -> bool:
         return any(bid in self.blocks for bid in (7, 11, 29, 30))
 
