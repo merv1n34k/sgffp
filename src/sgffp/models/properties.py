@@ -2,28 +2,22 @@
 Sequence properties model (block 8)
 """
 
-from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional
 
 from .base import SgffModel
 
 
-@dataclass
-class SgffProperties:
+class SgffProperties(SgffModel):
     """Sequence properties from block 8"""
 
     BLOCK_IDS = (8,)
 
-    _blocks: Dict[int, List[Any]] = field(repr=False)
-    _data: Optional[Dict] = field(default=None, repr=False)
-
     def __init__(self, blocks: Dict[int, List[Any]]):
-        self._blocks = blocks
-        self._data = None
+        super().__init__(blocks)
+        self._data: Optional[Dict] = None
 
     def _load(self) -> Dict:
-        items = self._blocks.get(8, [])
-        return items[0] if items else {}
+        return self._get_block(8) or {}
 
     @property
     def data(self) -> Dict:
@@ -38,15 +32,11 @@ class SgffProperties:
         self.data[key] = value
         self._sync()
 
-    @property
-    def exists(self) -> bool:
-        return 8 in self._blocks
-
     def _sync(self) -> None:
         if self._data:
-            self._blocks[8] = [self._data]
-        elif 8 in self._blocks:
-            del self._blocks[8]
+            self._set_block(8, self._data)
+        else:
+            self._remove_block(8)
 
     def __repr__(self) -> str:
         return f"SgffProperties(keys={list(self.data.keys())})"
