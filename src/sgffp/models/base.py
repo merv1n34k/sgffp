@@ -55,21 +55,13 @@ class SgffModel:
 class SgffListModel(SgffModel, Generic[T]):
     """
     Base for list-based block data (features, primers, etc.)
-    """
 
-    BLOCK_ID: int = -1
+    Subclasses must implement _load() and _sync().
+    """
 
     def __init__(self, blocks: Dict[int, List[Any]]):
         super().__init__(blocks)
         self._items: Optional[List[T]] = None
-
-    def _parse_item(self, data: Dict) -> T:
-        """Override: convert raw dict to item type"""
-        raise NotImplementedError
-
-    def _serialize_item(self, item: T) -> Dict:
-        """Override: convert item to raw dict"""
-        raise NotImplementedError
 
     def _load(self) -> List[T]:
         """Load and parse items from block"""

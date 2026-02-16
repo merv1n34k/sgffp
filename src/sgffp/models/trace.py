@@ -7,7 +7,7 @@ ZTR format contains chromatogram data from Sanger sequencing.
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Iterator
 
-from .base import SgffModel
+from .base import SgffListModel
 
 
 @dataclass
@@ -157,14 +157,10 @@ class SgffTrace:
         return f"SgffTrace(bases={self.length}, samples={self.sample_count})"
 
 
-class SgffTraceList(SgffModel):
+class SgffTraceList(SgffListModel[SgffTrace]):
     """Trace list wrapper for block 16 (trace container)"""
 
     BLOCK_IDS = (16,)
-
-    def __init__(self, blocks: Dict[int, List[Any]]):
-        super().__init__(blocks)
-        self._items: Optional[List[SgffTrace]] = None
 
     def _load(self) -> List[SgffTrace]:
         """Load traces from block 16 containers"""
@@ -175,35 +171,10 @@ class SgffTraceList(SgffModel):
                 traces.append(SgffTrace.from_dict(trace_data))
         return traces
 
-    @property
-    def items(self) -> List[SgffTrace]:
-        if self._items is None:
-            self._items = self._load()
-        return self._items
-
-    def add(self, trace: SgffTrace) -> None:
-        """Add trace and sync to blocks"""
-        self.items.append(trace)
-        self._sync()
-
-    def remove(self, idx: int) -> bool:
-        """Remove trace by index and sync"""
-        if 0 <= idx < len(self.items):
-            self.items.pop(idx)
-            self._sync()
-            return True
-        return False
-
-    def clear(self) -> None:
-        """Remove all traces"""
-        self._items = []
-        self._sync()
-
     def _sync(self) -> None:
         """Write traces back to block 16 containers"""
         if self._items is None:
             return
-
         if self._items:
             containers = [
                 {"flags": 0, "blocks": {18: [t.to_dict()]}}
@@ -212,15 +183,6 @@ class SgffTraceList(SgffModel):
             self._set_blocks(16, containers)
         else:
             self._remove_block(16)
-
-    def __iter__(self) -> Iterator[SgffTrace]:
-        return iter(self.items)
-
-    def __len__(self) -> int:
-        return len(self.items)
-
-    def __getitem__(self, idx: int) -> SgffTrace:
-        return self.items[idx]
 
     def __repr__(self) -> str:
         return f"SgffTraceList(count={len(self)})"

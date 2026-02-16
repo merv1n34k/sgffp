@@ -5,7 +5,7 @@ Feature model for annotations (block 10)
 from dataclasses import dataclass, field
 from typing import Dict, List, Any, Optional, Iterator
 
-from .base import SgffModel
+from .base import SgffListModel
 
 
 @dataclass
@@ -86,39 +86,24 @@ class SgffFeature:
         }
 
 
-class SgffFeatureList(SgffModel):
+class SgffFeatureList(SgffListModel[SgffFeature]):
     """Feature list wrapper for block 10"""
 
     BLOCK_IDS = (10,)
-
-    def __init__(self, blocks: Dict[int, List[Any]]):
-        super().__init__(blocks)
-        self._items: Optional[List[SgffFeature]] = None
 
     def _load(self) -> List[SgffFeature]:
         data = self._get_block(10)
         if not data:
             return []
+        return [SgffFeature.from_dict(f) for f in data.get("features", [])]
 
-        features = data.get("features", [])
-        return [SgffFeature.from_dict(f) for f in features]
-
-    @property
-    def items(self) -> List[SgffFeature]:
+    def _sync(self) -> None:
         if self._items is None:
-            self._items = self._load()
-        return self._items
-
-    def add(self, feature: SgffFeature) -> None:
-        self.items.append(feature)
-        self._sync()
-
-    def remove(self, idx: int) -> bool:
-        if 0 <= idx < len(self.items):
-            self.items.pop(idx)
-            self._sync()
-            return True
-        return False
+            return
+        if self._items:
+            self._set_block(10, {"features": [f.to_dict() for f in self._items]})
+        else:
+            self._remove_block(10)
 
     def find_by_name(self, name: str) -> Optional[SgffFeature]:
         for f in self.items:
@@ -128,29 +113,6 @@ class SgffFeatureList(SgffModel):
 
     def find_by_type(self, type_: str) -> List[SgffFeature]:
         return [f for f in self.items if f.type == type_]
-
-    def clear(self) -> None:
-        self._items = []
-        self._sync()
-
-    def _sync(self) -> None:
-        if self._items is None:
-            return
-
-        if self._items:
-            data = {"features": [f.to_dict() for f in self._items]}
-            self._set_block(10, data)
-        else:
-            self._remove_block(10)
-
-    def __iter__(self) -> Iterator[SgffFeature]:
-        return iter(self.items)
-
-    def __len__(self) -> int:
-        return len(self.items)
-
-    def __getitem__(self, idx: int) -> SgffFeature:
-        return self.items[idx]
 
     def __repr__(self) -> str:
         return f"SgffFeatureList(count={len(self)})"
