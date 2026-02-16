@@ -17,9 +17,16 @@ from .parsers import SCHEME
 KNOWN_BLOCKS = set(SCHEME.keys())
 
 
+def _open_input(path):
+    """Read SnapGene file from path or stdin"""
+    if path == "-":
+        return SgffReader(sys.stdin.buffer).read()
+    return SgffReader.from_file(path)
+
+
 def cmd_parse(args):
     """Parse SGFF file to JSON"""
-    sgff = SgffReader.from_file(args.input)
+    sgff = _open_input(args.input)
 
     # Convert int keys to strings for JSON
     blocks_json = {str(k): v for k, v in sgff.blocks.items()}
@@ -48,12 +55,13 @@ def cmd_parse(args):
 
 def cmd_info(args):
     """Show file information"""
-    sgff = SgffReader.from_file(args.input)
+    sgff = _open_input(args.input)
 
     seq_type_names = {1: "DNA", 2: "RNA", 3: "Protein"}
     seq_type_name = seq_type_names.get(sgff.cookie.type_of_sequence, "Unknown")
 
-    print(f"File: {args.input}")
+    label = "<stdin>" if args.input == "-" else args.input
+    print(f"File: {label}")
     print(f"Type: {seq_type_name} (export v{sgff.cookie.export_version}, import v{sgff.cookie.import_version})")
 
     # Sequence info
@@ -81,7 +89,7 @@ def cmd_info(args):
 
 def cmd_filter(args):
     """Filter blocks and write new file"""
-    sgff = SgffReader.from_file(args.input)
+    sgff = _open_input(args.input)
 
     keep_types = {int(t.strip()) for t in args.keep.split(",")}
 
@@ -128,7 +136,7 @@ def _print_tree(root, verbose=False):
 
 def cmd_tree(args):
     """Display history tree"""
-    sgff = SgffReader.from_file(args.input)
+    sgff = _open_input(args.input)
 
     if not sgff.has_history:
         print("No history tree", file=sys.stderr)
@@ -147,7 +155,12 @@ def cmd_check(args):
     found_blocks = {}
     unknown = []
 
-    with open(args.input, "rb") as f:
+    if args.input == "-":
+        f = sys.stdin.buffer
+    else:
+        f = open(args.input, "rb")
+
+    try:
         f.read(1 + 4 + 8 + 6)  # Skip header + cookie
 
         while True:
@@ -165,6 +178,9 @@ def cmd_check(args):
 
             if block_type not in KNOWN_BLOCKS and block_type not in unknown:
                 unknown.append(block_type)
+    finally:
+        if args.input != "-":
+            f.close()
 
     if args.list:
         for block_type in sorted(found_blocks.keys()):
@@ -194,16 +210,16 @@ def main():
 
     # Parse
     p = subparsers.add_parser("parse", help="Parse SGFF to JSON")
-    p.add_argument("input", help="Input SGFF file")
+    p.add_argument("input", nargs="?", default="-", help="Input SGFF file (default: stdin)")
     p.add_argument("-o", "--output", help="Output JSON file")
 
     # Info
     p = subparsers.add_parser("info", help="Show file information")
-    p.add_argument("input", help="Input SGFF file")
+    p.add_argument("input", nargs="?", default="-", help="Input SGFF file (default: stdin)")
 
     # Tree
     p = subparsers.add_parser("tree", help="Display history tree")
-    p.add_argument("input", help="Input SGFF file")
+    p.add_argument("input", nargs="?", default="-", help="Input SGFF file (default: stdin)")
     p.add_argument("-v", "--verbose", action="store_true", help="Show operation details")
 
     # Check
@@ -212,7 +228,7 @@ def main():
         help="Check for unknown block types",
         description="Silent by default. Use -l to list blocks or -d to dump unknown block data.",
     )
-    p.add_argument("input", help="Input SGFF file")
+    p.add_argument("input", nargs="?", default="-", help="Input SGFF file (default: stdin)")
     p.add_argument("-l", "--list", action="store_true", help="List all block types")
     p.add_argument("-d", "--dump", action="store_true", help="Dump unknown block data")
 

@@ -6,8 +6,8 @@ import json
 import subprocess
 import sys
 import tempfile
+from io import BytesIO, StringIO
 from pathlib import Path
-from io import StringIO
 from unittest.mock import patch
 
 import pytest
@@ -204,6 +204,46 @@ class TestFilterCommand:
             assert Path(output_path).exists()
         finally:
             Path(output_path).unlink(missing_ok=True)
+
+
+# =============================================================================
+# Stdin Tests
+# =============================================================================
+
+
+class TestStdin:
+    def test_info_stdin(self, test_dna, capsys):
+        """Info reads from stdin when input is -"""
+        data = test_dna.read_bytes()
+        with patch("sys.stdin", **{"buffer": BytesIO(data)}):
+            args = MockArgs(input="-")
+            cmd_info(args)
+
+        captured = capsys.readouterr()
+        assert "File: <stdin>" in captured.out
+        assert "Type:" in captured.out
+
+    def test_parse_stdin(self, test_dna, capsys):
+        """Parse reads from stdin when input is -"""
+        data = test_dna.read_bytes()
+        with patch("sys.stdin", **{"buffer": BytesIO(data)}):
+            args = MockArgs(input="-", output=None)
+            cmd_parse(args)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out)
+        assert "cookie" in output
+        assert "blocks" in output
+
+    def test_check_stdin(self, test_dna, capsys):
+        """Check reads from stdin when input is -"""
+        data = test_dna.read_bytes()
+        with patch("sys.stdin", **{"buffer": BytesIO(data)}):
+            args = MockArgs(input="-", list=True, dump=False)
+            cmd_check(args)
+
+        captured = capsys.readouterr()
+        assert ":" in captured.out
 
 
 # =============================================================================
