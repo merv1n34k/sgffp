@@ -45,4 +45,5 @@ pythonpath = ["src"]
 [dependency-groups]
 dev = [
     "ipython>=9.9.0",
+    "ruff>=0.15.1",
 ]
