@@ -9,5 +9,14 @@ wheels/
 # Virtual environments
 .venv
 
+# Test / coverage artifacts
+.coverage
+htmlcov/
+
+# IDE and tooling
+.claude/
+
+# Data / legacy
+data/
 legacy/*
 node_*

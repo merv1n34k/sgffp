@@ -17,12 +17,7 @@ classifiers = [
     "Topic :: File Formats",
 ]
 dependencies = [
-    "biopython>=1.85",
-    "html2text>=2025.4.15",
-    "matplotlib>=3.10.7",
-    "numpy>=2.3.4",
-    "pandas>=2.3.3",
-    "xmltodict>=1.0.2",
+    "xmltodict>=0.14",
 ]
 
 [project.urls]
