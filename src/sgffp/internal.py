@@ -177,6 +177,6 @@ class SgffObject:
         return 17 in self.blocks
 
     @property
-    def has_trace(self) -> bool:
-        return 18 in self.blocks
+    def has_traces(self) -> bool:
+        return 16 in self.blocks or 18 in self.blocks
 

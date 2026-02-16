@@ -765,28 +765,39 @@ class TestSgffTraceList:
         traces = SgffTraceList({})
         assert len(traces) == 0
 
-    def test_load_traces(self):
-        """Load traces from block 18"""
-        blocks = {18: [
-            {"bases": "ATCG"},
-            {"bases": "GGGG"},
+    def test_load_traces_from_containers(self):
+        """Load traces from block 16 containers"""
+        blocks = {16: [
+            {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
+            {"flags": 1, "blocks": {18: [{"bases": "GGGG"}]}},
         ]}
         traces = SgffTraceList(blocks)
         assert len(traces) == 2
         assert traces[0].bases == "ATCG"
         assert traces[1].bases == "GGGG"
 
+    def test_load_traces_from_standalone_block_18(self):
+        """Load traces from standalone block 18 (e.g. inside history node content)"""
+        blocks = {18: [{"bases": "ATCG"}, {"bases": "GGGG"}]}
+        traces = SgffTraceList(blocks)
+        assert len(traces) == 2
+        assert traces[0].bases == "ATCG"
+
     def test_add_trace(self):
-        """Add trace to list"""
-        blocks = {18: [{"bases": "ATCG"}]}
+        """Add trace syncs to block 16 containers"""
+        blocks = {16: [{"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}}]}
         traces = SgffTraceList(blocks)
         traces.add(SgffTrace(bases="GGGG"))
         assert len(traces) == 2
-        assert blocks[18][1]["bases"] == "GGGG"
+        assert len(blocks[16]) == 2
+        assert blocks[16][1]["blocks"][18][0]["bases"] == "GGGG"
 
     def test_remove_trace(self):
         """Remove trace from list"""
-        blocks = {18: [{"bases": "ATCG"}, {"bases": "GGGG"}]}
+        blocks = {16: [
+            {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
+            {"flags": 0, "blocks": {18: [{"bases": "GGGG"}]}},
+        ]}
         traces = SgffTraceList(blocks)
         traces.remove(0)
         assert len(traces) == 1
@@ -794,22 +805,29 @@ class TestSgffTraceList:
 
     def test_clear_traces(self):
         """Clear all traces"""
-        blocks = {18: [{"bases": "ATCG"}]}
+        blocks = {16: [{"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}}]}
         traces = SgffTraceList(blocks)
         traces.clear()
         assert len(traces) == 0
-        assert 18 not in blocks
+        assert 16 not in blocks
 
     def test_iterate(self):
         """Iterate over traces"""
-        blocks = {18: [{"bases": "A"}, {"bases": "T"}, {"bases": "C"}]}
+        blocks = {16: [
+            {"flags": 0, "blocks": {18: [{"bases": "A"}]}},
+            {"flags": 0, "blocks": {18: [{"bases": "T"}]}},
+            {"flags": 0, "blocks": {18: [{"bases": "C"}]}},
+        ]}
         traces = SgffTraceList(blocks)
         bases = [t.bases for t in traces]
         assert bases == ["A", "T", "C"]
 
     def test_repr(self):
         """String representation"""
-        blocks = {18: [{"bases": "ATCG"}, {"bases": "GGGG"}]}
+        blocks = {16: [
+            {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
+            {"flags": 0, "blocks": {18: [{"bases": "GGGG"}]}},
+        ]}
         traces = SgffTraceList(blocks)
         assert "SgffTraceList" in repr(traces)
         assert "count=2" in repr(traces)

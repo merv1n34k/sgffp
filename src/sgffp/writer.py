@@ -127,6 +127,10 @@ class SgffWriter:
         if block_type == 30:
             return self._serialize_lzma_nested(data)
 
+        # Trace container (16) - 4 byte flags + nested TLV blocks
+        if block_type == 16:
+            return self._serialize_trace_container(data)
+
         # Trace (18) - ZTR binary format
         if block_type == 18:
             return self._serialize_ztr(data)
@@ -281,6 +285,28 @@ class SgffWriter:
             buf.write(bytes([0x1E]))  # Block type 30
             buf.write(struct.pack(">I", len(lzma_data)))
             buf.write(lzma_data)
+
+        return buf.getvalue()
+
+    def _serialize_trace_container(self, data: Dict) -> bytes:
+        """Serialize trace container (block 16) - 4 byte flags + nested TLV blocks"""
+        buf = BytesIO()
+
+        # 4-byte flags header
+        flags = data.get("flags", 0)
+        buf.write(struct.pack(">I", flags))
+
+        # Nested blocks (typically block 18 trace + optional block 8 properties)
+        nested = data.get("blocks", {})
+        for block_type in sorted(nested.keys()):
+            if not isinstance(block_type, int):
+                continue
+            for item in nested[block_type]:
+                block_data = self._serialize(block_type, item)
+                if block_data:
+                    buf.write(bytes([block_type]))
+                    buf.write(struct.pack(">I", len(block_data)))
+                    buf.write(block_data)
 
         return buf.getvalue()
 

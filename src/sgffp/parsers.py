@@ -405,6 +405,28 @@ def parse_ztr(data: bytes) -> Optional[Dict[str, Any]]:
 
 
 # =============================================================================
+# TRACE CONTAINER PARSER
+# =============================================================================
+
+
+def parse_trace_container(data: bytes) -> Dict[str, Any]:
+    """Type 16: Trace container - 4 byte flags + nested TLV blocks (18, 8, etc.)"""
+    result: Dict[str, Any] = {}
+
+    # 4-byte header flags
+    flags = struct.unpack(">I", data[:4])[0]
+    result["flags"] = flags
+
+    # Parse nested blocks from remaining data
+    if len(data) > 4:
+        nested = parse_blocks(BytesIO(data[4:]))
+        if nested:
+            result["blocks"] = nested
+
+    return result
+
+
+# =============================================================================
 # HISTORY NODE PARSER
 # =============================================================================
 
@@ -475,7 +497,7 @@ SCHEME: Dict[int, Tuple[Optional[int], Optional[Callable]]] = {
     8: (None, parse_xml),  #            Sequence properties
     10: (None, parse_features),  #      Features
     11: (None, parse_history_node),  #  History node container
-    16: (4, None),  #                   Legacy trace - skip content
+    16: (None, parse_trace_container),  # Trace container (nested 18 + 8)
     17: (None, parse_xml),  #           Alignable sequences
     18: (None, parse_ztr),  #           Sequence trace
     21: (None, parse_sequence),  #      Protein
