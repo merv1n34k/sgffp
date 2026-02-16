@@ -100,16 +100,16 @@ All known SnapGene block types and their encoding formats:
 
 | ID | Block Type           | Format        | ID | Block Type           | Format        |
 |----|----------------------|---------------|----|----------------------|---------------|
-| 0  | DNA Sequence         | UTF-8         | 17 | Alignable Sequences  | XML           |
-| 1  | Compressed DNA       | 2-bit GATC    | 18 | Sequence Trace       | ZTR           |
-| 5  | Primers              | XML           | 21 | Protein Sequence     | UTF-8         |
-| 6  | Notes                | XML           | 28 | Enzyme Visualization | XML           |
+| 0  | DNA Sequence         | UTF-8         | 16 | Trace Container      | Binary + TLV  |
+| 1  | Compressed DNA       | 2-bit GATC    | 17 | Alignable Sequences  | XML           |
+| 5  | Primers              | XML           | 18 | Sequence Trace       | ZTR           |
+| 6  | Notes                | XML           | 21 | Protein Sequence     | UTF-8         |
 | 7  | History Tree         | LZMA + XML    | 29 | History Modifier     | LZMA + XML    |
 | 8  | Sequence Properties  | XML           | 30 | History Content      | LZMA + TLV    |
 | 10 | Features             | XML           | 32 | RNA Sequence         | UTF-8         |
-| 11 | History Nodes        | Binary + TLV  | 14 | Custom Enzymes       | XML           |
+| 11 | History Nodes        | Binary + TLV  |    |                      |               |
 
-Blocks not listed (2-4, 9, 12-13, 15-16, 19-20, 22-27, 31) are either unknown or internal SnapGene data.
+Block 18 (ZTR trace) only appears inside block 16 containers, never as a standalone top-level block. For a complete binary format reference, see [SNAPGENE_FORMAT_SPEC.md](SNAPGENE_FORMAT_SPEC.md).
 
 ## Supported Block Types
 
@@ -125,10 +125,10 @@ The table below shows which block types can be read from and written to SnapGene
 | 8  | Sequence Properties (XML)     | +    | +     | +     |
 | 10 | Features (XML)                | +    | +     | +     |
 | 11 | History Nodes                 | +    | +     | +     |
-| 14 | Custom Enzymes (XML)          | +    | +     | -     |
+| 16 | Trace Container               | +    | +     | +     |
 | 17 | Alignable Sequences (XML)     | +    | +     | +     |
+| 18 | ZTR Trace (in block 16)       | +    | +     | +     |
 | 21 | Protein Sequence              | +    | +     | +     |
-| 28 | Enzyme Visualization (XML)    | +    | +     | -     |
 | 29 | History Modifier (XML)        | +    | +     | +     |
 | 30 | History Content (Nested)      | +    | +     | +     |
 | 32 | RNA Sequence                  | +    | +     | +     |
@@ -140,7 +140,7 @@ The table below shows which block types can be read from and written to SnapGene
 - [x] Understand whole file structure
 - [x] Correctly parse into readable format from all common blocks
 - [x] Create writer for supported block types
-- [x] Add comprehensive test suite (199 tests)
+- [x] Add comprehensive test suite (240 tests)
 - [x] Parse XML into pure JSON format
 - [x] Add write support for history blocks (LZMA compression)
 - [x] Add typed model classes for easy data access
