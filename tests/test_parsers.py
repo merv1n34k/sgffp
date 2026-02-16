@@ -176,7 +176,7 @@ class TestParseCompressedDna:
         data = (
             struct.pack(">I", compressed_length)
             + struct.pack(">I", base_count)
-            + (b"\x00" * 14)  # mystery bytes (14 bytes, but only 10 preserved)
+            + (b"\x00" * 14)  # mystery bytes (14 bytes)
             + encoded
         )
 
@@ -185,8 +185,8 @@ class TestParseCompressedDna:
         assert result["length"] == 8
 
     def test_parse_compressed_dna_mystery_bytes(self):
-        """Mystery bytes are preserved"""
-        mystery = b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a"
+        """All 14 mystery bytes are preserved"""
+        mystery = b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e"
         sequence = "GATC"
         base_count = 4
         encoded = bytes([0b00011011])
@@ -197,12 +197,12 @@ class TestParseCompressedDna:
             struct.pack(">I", compressed_length)
             + struct.pack(">I", base_count)
             + mystery
-            + (b"\x00" * 4)  # remaining mystery bytes
             + encoded
         )
 
         result = parse_compressed_dna(data)
-        assert result["mystery"] == mystery  # First 10 bytes preserved
+        assert result["mystery"] == mystery
+        assert len(result["mystery"]) == 14
 
 
 # =============================================================================

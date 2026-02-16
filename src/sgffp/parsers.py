@@ -95,7 +95,7 @@ def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
     offset += 4
 
     # Mystery bytes (14 bytes) - preserve for round-trip
-    mystery = data[offset : offset + 10]
+    mystery = data[offset : offset + 14]
     offset += 14
 
     total_bytes = (uncompressed_length * 2 + 7) // 8

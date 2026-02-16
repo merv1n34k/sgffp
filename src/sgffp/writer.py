@@ -262,8 +262,6 @@ class SgffWriter:
             buf.write(struct.pack(">I", len(sequence)))
 
             mystery = data.get("mystery", b"\x00" * 14)
-            if len(mystery) < 14:
-                mystery = mystery + b"\x00" * (14 - len(mystery))
             buf.write(mystery[:14])
             buf.write(encoded)
 
