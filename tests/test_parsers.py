@@ -6,7 +6,6 @@ import struct
 import lzma
 from io import BytesIO
 
-import pytest
 
 from sgffp.parsers import (
     parse_blocks,
@@ -165,13 +164,14 @@ class TestParseCompressedDna:
         # 14 bytes: mystery bytes
         # N bytes: 2-bit encoded sequence
 
-        sequence = "GATCGATC"  # 8 bases
-        base_count = 8
+        base_count = 8  # GATCGATC
 
         # Encode sequence: GATC = 0b00011011
         encoded = bytes([0b00011011, 0b00011011])
 
-        compressed_length = 4 + 14 + len(encoded)  # uncompressed_len + mystery + encoded
+        compressed_length = (
+            4 + 14 + len(encoded)
+        )  # uncompressed_len + mystery + encoded
 
         data = (
             struct.pack(">I", compressed_length)
@@ -187,7 +187,6 @@ class TestParseCompressedDna:
     def test_parse_compressed_dna_mystery_bytes(self):
         """All 14 mystery bytes are preserved"""
         mystery = b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e"
-        sequence = "GATC"
         base_count = 4
         encoded = bytes([0b00011011])
 

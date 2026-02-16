@@ -3,7 +3,7 @@ Alignable sequences model (block 17)
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional, Iterator
+from typing import Dict, List
 
 from .base import SgffListModel
 
@@ -55,7 +55,14 @@ class SgffAlignmentList(SgffListModel[SgffAlignment]):
         if self._items is None:
             return
         if self._items:
-            self._set_block(17, {"AlignableSequences": {"Sequence": [a.to_dict() for a in self._items]}})
+            self._set_block(
+                17,
+                {
+                    "AlignableSequences": {
+                        "Sequence": [a.to_dict() for a in self._items]
+                    }
+                },
+            )
         else:
             self._remove_block(17)
 

@@ -6,7 +6,7 @@ import json
 import subprocess
 import sys
 import tempfile
-from io import BytesIO, StringIO
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -174,6 +174,7 @@ class TestTreeCommand:
 
         try:
             from sgffp.cli import cmd_filter
+
             filter_args = MockArgs(input=str(test_dna), keep="0", output=output_path)
             cmd_filter(filter_args)
             capsys.readouterr()  # clear filter output

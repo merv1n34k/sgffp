@@ -227,4 +227,3 @@ class SgffObject:
     @property
     def has_traces(self) -> bool:
         return 16 in self.blocks
-

@@ -35,7 +35,9 @@ def compare_sequences(original, restored):
     """Compare sequence blocks between original and restored"""
     for block_type in [0, 1, 21, 32]:
         if block_type in original.blocks:
-            assert block_type in restored.blocks, f"Block {block_type} missing after roundtrip"
+            assert block_type in restored.blocks, (
+                f"Block {block_type} missing after roundtrip"
+            )
 
             orig_seq = original.blocks[block_type][0].get("sequence", "")
             rest_seq = restored.blocks[block_type][0].get("sequence", "")

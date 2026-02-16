@@ -3,7 +3,7 @@ Primer model (block 5)
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional, Iterator
+from typing import Dict, List, Optional
 
 from .base import SgffListModel
 
@@ -30,10 +30,12 @@ class SgffPrimer:
 
     def to_dict(self) -> Dict:
         result = dict(self._raw)
-        result.update({
-            "name": self.name,
-            "sequence": self.sequence,
-        })
+        result.update(
+            {
+                "name": self.name,
+                "sequence": self.sequence,
+            }
+        )
         if self.bind_position is not None:
             result["bindingSite"] = self.bind_position
         if self.bind_strand:
@@ -65,7 +67,9 @@ class SgffPrimerList(SgffListModel[SgffPrimer]):
         if self._items is None:
             return
         if self._items:
-            self._set_block(5, {"Primers": {"Primer": [p.to_dict() for p in self._items]}})
+            self._set_block(
+                5, {"Primers": {"Primer": [p.to_dict() for p in self._items]}}
+            )
         else:
             self._remove_block(5)
 

@@ -273,7 +273,9 @@ class SgffHistoryTreeNode:
 
         if self.features:
             result["Features"] = {
-                "Feature": self.features[0] if len(self.features) == 1 else self.features
+                "Feature": self.features[0]
+                if len(self.features) == 1
+                else self.features
             }
 
         # Serialize children
@@ -705,6 +707,7 @@ class SgffHistory(SgffModel):
         # For root node, fall back to main sequence
         if self.tree and self.tree.root and self.tree.root.id == index:
             from .sequence import SgffSequence
+
             main_seq = SgffSequence(self._blocks)
             if main_seq.value:
                 return main_seq.value

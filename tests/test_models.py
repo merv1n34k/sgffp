@@ -2,7 +2,6 @@
 Tests for SGFF data models
 """
 
-import pytest
 from sgffp.models import (
     SgffSequence,
     SgffFeature,
@@ -16,11 +15,9 @@ from sgffp.models import (
     SgffHistoryOligo,
     SgffInputSummary,
     HistoryOperation,
-    SgffPrimer,
     SgffPrimerList,
     SgffNotes,
     SgffProperties,
-    SgffAlignment,
     SgffAlignmentList,
     SgffTrace,
     SgffTraceList,
@@ -128,9 +125,7 @@ class TestSgffFeatureList:
 
     def test_remove_feature(self):
         """Remove feature updates blocks"""
-        blocks = {
-            10: [{"features": [{"name": "A", "type": "gene", "segments": []}]}]
-        }
+        blocks = {10: [{"features": [{"name": "A", "type": "gene", "segments": []}]}]}
         fl = SgffFeatureList(blocks)
         fl.remove(0)
         assert len(fl) == 0
@@ -253,21 +248,39 @@ class TestSgffHistory:
     def test_tree_node_linking(self):
         """Tree nodes are linked to sequence nodes"""
         blocks = {
-            7: [{"HistoryTree": {"Node": {
-                "ID": "1", "name": "current.dna", "type": "DNA", "seqLen": "100",
-                "strandedness": "double", "circular": "0", "operation": "makeDna",
-                "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
-                "Node": {
-                    "ID": "0", "name": "original.rna", "type": "RNA", "seqLen": "100",
-                    "strandedness": "single", "circular": "0", "operation": "invalid",
-                    "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
-                    "resurrectable": "1"
+            7: [
+                {
+                    "HistoryTree": {
+                        "Node": {
+                            "ID": "1",
+                            "name": "current.dna",
+                            "type": "DNA",
+                            "seqLen": "100",
+                            "strandedness": "double",
+                            "circular": "0",
+                            "operation": "makeDna",
+                            "upstreamModification": "Unmodified",
+                            "downstreamModification": "Unmodified",
+                            "Node": {
+                                "ID": "0",
+                                "name": "original.rna",
+                                "type": "RNA",
+                                "seqLen": "100",
+                                "strandedness": "single",
+                                "circular": "0",
+                                "operation": "invalid",
+                                "upstreamModification": "Unmodified",
+                                "downstreamModification": "Unmodified",
+                                "resurrectable": "1",
+                            },
+                        }
+                    }
                 }
-            }}}],
+            ],
             11: [
                 {"node_index": 0, "sequence": "RNA_SEQ", "sequence_type": 32},
                 {"node_index": 1, "sequence": "DNA_SEQ", "sequence_type": 0},
-            ]
+            ],
         }
         h = SgffHistory(blocks)
 
@@ -345,9 +358,15 @@ class TestSgffHistoryTreeNode:
     def test_from_dict_with_oligos(self):
         """Parse oligos from tree node"""
         data = {
-            "ID": "1", "name": "amp.dna", "type": "DNA", "seqLen": "100",
-            "strandedness": "double", "circular": "0", "operation": "amplifyFragment",
-            "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
+            "ID": "1",
+            "name": "amp.dna",
+            "type": "DNA",
+            "seqLen": "100",
+            "strandedness": "double",
+            "circular": "0",
+            "operation": "amplifyFragment",
+            "upstreamModification": "Unmodified",
+            "downstreamModification": "Unmodified",
             "Oligo": [
                 {"name": "FWD", "sequence": "ATGC", "phosphorylated": "1"},
                 {"name": "REV", "sequence": "GCTA"},
@@ -362,14 +381,26 @@ class TestSgffHistoryTreeNode:
     def test_from_dict_with_children(self):
         """Parse nested child nodes"""
         data = {
-            "ID": "2", "name": "child2.dna", "type": "DNA", "seqLen": "200",
-            "strandedness": "double", "circular": "0", "operation": "makeDna",
-            "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
+            "ID": "2",
+            "name": "child2.dna",
+            "type": "DNA",
+            "seqLen": "200",
+            "strandedness": "double",
+            "circular": "0",
+            "operation": "makeDna",
+            "upstreamModification": "Unmodified",
+            "downstreamModification": "Unmodified",
             "Node": {
-                "ID": "1", "name": "child1.dna", "type": "DNA", "seqLen": "200",
-                "strandedness": "double", "circular": "0", "operation": "invalid",
-                "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
-            }
+                "ID": "1",
+                "name": "child1.dna",
+                "type": "DNA",
+                "seqLen": "200",
+                "strandedness": "double",
+                "circular": "0",
+                "operation": "invalid",
+                "upstreamModification": "Unmodified",
+                "downstreamModification": "Unmodified",
+            },
         }
         node = SgffHistoryTreeNode.from_dict(data)
         assert len(node.children) == 1
@@ -379,9 +410,15 @@ class TestSgffHistoryTreeNode:
     def test_to_dict(self):
         """Convert tree node back to dict"""
         node = SgffHistoryTreeNode(
-            id=1, name="test.dna", type="DNA", seq_len=500,
-            strandedness="double", circular=False, operation="makeDna",
-            upstream_modification="Unmodified", downstream_modification="Unmodified",
+            id=1,
+            name="test.dna",
+            type="DNA",
+            seq_len=500,
+            strandedness="double",
+            circular=False,
+            operation="makeDna",
+            upstream_modification="Unmodified",
+            downstream_modification="Unmodified",
             resurrectable=True,
             oligos=[SgffHistoryOligo(name="P1", sequence="AAAA")],
             input_summaries=[SgffInputSummary(manipulation="select", val1=0, val2=499)],
@@ -403,16 +440,32 @@ class TestSgffHistoryTree:
 
     def test_parse_tree(self):
         """Parse tree from block 7 data"""
-        data = {"HistoryTree": {"Node": {
-            "ID": "2", "name": "current.dna", "type": "DNA", "seqLen": "100",
-            "strandedness": "double", "circular": "0", "operation": "makeDna",
-            "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
-            "Node": {
-                "ID": "1", "name": "previous.rna", "type": "RNA", "seqLen": "100",
-                "strandedness": "single", "circular": "0", "operation": "invalid",
-                "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
+        data = {
+            "HistoryTree": {
+                "Node": {
+                    "ID": "2",
+                    "name": "current.dna",
+                    "type": "DNA",
+                    "seqLen": "100",
+                    "strandedness": "double",
+                    "circular": "0",
+                    "operation": "makeDna",
+                    "upstreamModification": "Unmodified",
+                    "downstreamModification": "Unmodified",
+                    "Node": {
+                        "ID": "1",
+                        "name": "previous.rna",
+                        "type": "RNA",
+                        "seqLen": "100",
+                        "strandedness": "single",
+                        "circular": "0",
+                        "operation": "invalid",
+                        "upstreamModification": "Unmodified",
+                        "downstreamModification": "Unmodified",
+                    },
+                }
             }
-        }}}
+        }
         tree = SgffHistoryTree(data)
         assert tree.root is not None
         assert tree.root.id == 2
@@ -420,48 +473,96 @@ class TestSgffHistoryTree:
 
     def test_get_node(self):
         """Get node by ID"""
-        data = {"HistoryTree": {"Node": {
-            "ID": "1", "name": "test.dna", "type": "DNA", "seqLen": "100",
-            "strandedness": "double", "circular": "0", "operation": "invalid",
-            "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
-        }}}
+        data = {
+            "HistoryTree": {
+                "Node": {
+                    "ID": "1",
+                    "name": "test.dna",
+                    "type": "DNA",
+                    "seqLen": "100",
+                    "strandedness": "double",
+                    "circular": "0",
+                    "operation": "invalid",
+                    "upstreamModification": "Unmodified",
+                    "downstreamModification": "Unmodified",
+                }
+            }
+        }
         tree = SgffHistoryTree(data)
         assert tree.get(1).name == "test.dna"
         assert tree.get(999) is None
 
     def test_walk(self):
         """Walk tree depth-first"""
-        data = {"HistoryTree": {"Node": {
-            "ID": "2", "name": "node2", "type": "DNA", "seqLen": "100",
-            "strandedness": "double", "circular": "0", "operation": "makeDna",
-            "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
-            "Node": {
-                "ID": "1", "name": "node1", "type": "DNA", "seqLen": "100",
-                "strandedness": "double", "circular": "0", "operation": "invalid",
-                "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
+        data = {
+            "HistoryTree": {
+                "Node": {
+                    "ID": "2",
+                    "name": "node2",
+                    "type": "DNA",
+                    "seqLen": "100",
+                    "strandedness": "double",
+                    "circular": "0",
+                    "operation": "makeDna",
+                    "upstreamModification": "Unmodified",
+                    "downstreamModification": "Unmodified",
+                    "Node": {
+                        "ID": "1",
+                        "name": "node1",
+                        "type": "DNA",
+                        "seqLen": "100",
+                        "strandedness": "double",
+                        "circular": "0",
+                        "operation": "invalid",
+                        "upstreamModification": "Unmodified",
+                        "downstreamModification": "Unmodified",
+                    },
+                }
             }
-        }}}
+        }
         tree = SgffHistoryTree(data)
         names = [n.name for n in tree.walk()]
         assert names == ["node2", "node1"]
 
     def test_ancestors(self):
         """Get ancestor chain"""
-        data = {"HistoryTree": {"Node": {
-            "ID": "2", "name": "grandchild", "type": "DNA", "seqLen": "100",
-            "strandedness": "double", "circular": "0", "operation": "makeDna",
-            "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
-            "Node": {
-                "ID": "1", "name": "child", "type": "DNA", "seqLen": "100",
-                "strandedness": "double", "circular": "0", "operation": "makeRna",
-                "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
+        data = {
+            "HistoryTree": {
                 "Node": {
-                    "ID": "0", "name": "root", "type": "DNA", "seqLen": "100",
-                    "strandedness": "double", "circular": "0", "operation": "invalid",
-                    "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
+                    "ID": "2",
+                    "name": "grandchild",
+                    "type": "DNA",
+                    "seqLen": "100",
+                    "strandedness": "double",
+                    "circular": "0",
+                    "operation": "makeDna",
+                    "upstreamModification": "Unmodified",
+                    "downstreamModification": "Unmodified",
+                    "Node": {
+                        "ID": "1",
+                        "name": "child",
+                        "type": "DNA",
+                        "seqLen": "100",
+                        "strandedness": "double",
+                        "circular": "0",
+                        "operation": "makeRna",
+                        "upstreamModification": "Unmodified",
+                        "downstreamModification": "Unmodified",
+                        "Node": {
+                            "ID": "0",
+                            "name": "root",
+                            "type": "DNA",
+                            "seqLen": "100",
+                            "strandedness": "double",
+                            "circular": "0",
+                            "operation": "invalid",
+                            "upstreamModification": "Unmodified",
+                            "downstreamModification": "Unmodified",
+                        },
+                    },
                 }
             }
-        }}}
+        }
         tree = SgffHistoryTree(data)
         ancestors = tree.ancestors(0)
         assert len(ancestors) == 3
@@ -470,11 +571,21 @@ class TestSgffHistoryTree:
 
     def test_to_dict(self):
         """Serialize tree back to dict"""
-        data = {"HistoryTree": {"Node": {
-            "ID": "1", "name": "test", "type": "DNA", "seqLen": "100",
-            "strandedness": "double", "circular": "0", "operation": "invalid",
-            "upstreamModification": "Unmodified", "downstreamModification": "Unmodified",
-        }}}
+        data = {
+            "HistoryTree": {
+                "Node": {
+                    "ID": "1",
+                    "name": "test",
+                    "type": "DNA",
+                    "seqLen": "100",
+                    "strandedness": "double",
+                    "circular": "0",
+                    "operation": "invalid",
+                    "upstreamModification": "Unmodified",
+                    "downstreamModification": "Unmodified",
+                }
+            }
+        }
         tree = SgffHistoryTree(data)
         result = tree.to_dict()
         assert "HistoryTree" in result
@@ -493,11 +604,15 @@ class TestSgffHistoryNodeContent:
 
     def test_parse_content(self):
         """Parse content from node_info"""
-        data = {30: [{
-            8: [{"AdditionalSequenceProperties": {"UpstreamStickiness": "0"}}],
-            5: [{"Primers": {"nextValidID": "5"}}],
-            6: [{"Notes": {"Type": "Synthetic"}}],
-        }]}
+        data = {
+            30: [
+                {
+                    8: [{"AdditionalSequenceProperties": {"UpstreamStickiness": "0"}}],
+                    5: [{"Primers": {"nextValidID": "5"}}],
+                    6: [{"Notes": {"Type": "Synthetic"}}],
+                }
+            ]
+        }
         content = SgffHistoryNodeContent.from_dict(data)
         assert content.exists
         assert content.has_properties
@@ -534,10 +649,12 @@ class TestSgffHistoryNodeContent:
 
     def test_traces_accessor(self):
         """Multiple traces accessible via traces property"""
-        blocks = {16: [
-            {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
-            {"flags": 0, "blocks": {18: [{"bases": "GGGG"}]}},
-        ]}
+        blocks = {
+            16: [
+                {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
+                {"flags": 0, "blocks": {18: [{"bases": "GGGG"}]}},
+            ]
+        }
         content = SgffHistoryNodeContent(blocks)
         assert content.has_traces
         assert len(content.traces) == 2
@@ -561,9 +678,7 @@ class TestSgffPrimerList:
 
     def test_load_primers(self):
         """Load primers from block 5"""
-        blocks = {
-            5: [{"Primers": {"Primer": [{"name": "FWD", "sequence": "ATCG"}]}}]
-        }
+        blocks = {5: [{"Primers": {"Primer": [{"name": "FWD", "sequence": "ATCG"}]}}]}
         pl = SgffPrimerList(blocks)
         assert len(pl) == 1
         assert pl[0].name == "FWD"
@@ -613,7 +728,11 @@ class TestSgffAlignmentList:
         """Load alignments from block 17"""
         blocks = {
             17: [
-                {"AlignableSequences": {"Sequence": [{"name": "Ref", "sequence": "ATCG"}]}}
+                {
+                    "AlignableSequences": {
+                        "Sequence": [{"name": "Ref", "sequence": "ATCG"}]
+                    }
+                }
             ]
         }
         al = SgffAlignmentList(blocks)
@@ -770,10 +889,12 @@ class TestSgffTraceList:
 
     def test_load_traces_from_containers(self):
         """Load traces from block 16 containers"""
-        blocks = {16: [
-            {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
-            {"flags": 1, "blocks": {18: [{"bases": "GGGG"}]}},
-        ]}
+        blocks = {
+            16: [
+                {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
+                {"flags": 1, "blocks": {18: [{"bases": "GGGG"}]}},
+            ]
+        }
         traces = SgffTraceList(blocks)
         assert len(traces) == 2
         assert traces[0].bases == "ATCG"
@@ -797,10 +918,12 @@ class TestSgffTraceList:
 
     def test_remove_trace(self):
         """Remove trace from list"""
-        blocks = {16: [
-            {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
-            {"flags": 0, "blocks": {18: [{"bases": "GGGG"}]}},
-        ]}
+        blocks = {
+            16: [
+                {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
+                {"flags": 0, "blocks": {18: [{"bases": "GGGG"}]}},
+            ]
+        }
         traces = SgffTraceList(blocks)
         traces.remove(0)
         assert len(traces) == 1
@@ -816,21 +939,25 @@ class TestSgffTraceList:
 
     def test_iterate(self):
         """Iterate over traces"""
-        blocks = {16: [
-            {"flags": 0, "blocks": {18: [{"bases": "A"}]}},
-            {"flags": 0, "blocks": {18: [{"bases": "T"}]}},
-            {"flags": 0, "blocks": {18: [{"bases": "C"}]}},
-        ]}
+        blocks = {
+            16: [
+                {"flags": 0, "blocks": {18: [{"bases": "A"}]}},
+                {"flags": 0, "blocks": {18: [{"bases": "T"}]}},
+                {"flags": 0, "blocks": {18: [{"bases": "C"}]}},
+            ]
+        }
         traces = SgffTraceList(blocks)
         bases = [t.bases for t in traces]
         assert bases == ["A", "T", "C"]
 
     def test_repr(self):
         """String representation"""
-        blocks = {16: [
-            {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
-            {"flags": 0, "blocks": {18: [{"bases": "GGGG"}]}},
-        ]}
+        blocks = {
+            16: [
+                {"flags": 0, "blocks": {18: [{"bases": "ATCG"}]}},
+                {"flags": 0, "blocks": {18: [{"bases": "GGGG"}]}},
+            ]
+        }
         traces = SgffTraceList(blocks)
         assert "SgffTraceList" in repr(traces)
         assert "count=2" in repr(traces)

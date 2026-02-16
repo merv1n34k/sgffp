@@ -3,7 +3,7 @@ Feature model for annotations (block 10)
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional, Iterator
+from typing import Dict, List, Any, Optional
 
 from .base import SgffListModel
 

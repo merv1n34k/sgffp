@@ -60,4 +60,3 @@ class SgffReader:
     def from_bytes(cls, data: bytes) -> SgffObject:
         """Read from bytes"""
         return cls(BytesIO(data)).read()
-

@@ -63,7 +63,9 @@ def cmd_info(args):
 
     label = "<stdin>" if args.input == "-" else args.input
     print(f"File: {label}")
-    print(f"Type: {seq_type_name} (export v{sgff.cookie.export_version}, import v{sgff.cookie.import_version})")
+    print(
+        f"Type: {seq_type_name} (export v{sgff.cookie.export_version}, import v{sgff.cookie.import_version})"
+    )
 
     # Sequence info
     seq = sgff.sequence
@@ -99,7 +101,7 @@ def cmd_info(args):
     # Notes
     if sgff.has_notes:
         notes = sgff.notes
-        print(f"\n--- Notes ---")
+        print("\n--- Notes ---")
         if notes.description:
             print(f"  Description: {notes.description}")
         if notes.created:
@@ -132,7 +134,7 @@ def cmd_info(args):
     if sgff.has_history:
         tree = sgff.history.tree
         if tree and tree.root:
-            print(f"\n--- History ---")
+            print("\n--- History ---")
             _print_tree(tree.root)
 
 
@@ -168,7 +170,11 @@ def _print_tree(root, verbose=False):
         print(f"  \u2514\u2500\u2500 {root.operation} \u2192 {_format_node(root)}")
         if verbose:
             for summary in root.input_summaries:
-                enzymes = ", ".join(f"{n} ({c})" for n, c in summary.enzymes) if summary.enzymes else ""
+                enzymes = (
+                    ", ".join(f"{n} ({c})" for n, c in summary.enzymes)
+                    if summary.enzymes
+                    else ""
+                )
                 parts = [summary.manipulation, f"{summary.val1}..{summary.val2}"]
                 if enzymes:
                     parts.append(enzymes)
@@ -259,18 +265,28 @@ def main():
 
     # Parse
     p = subparsers.add_parser("parse", help="Parse SGFF to JSON")
-    p.add_argument("input", nargs="?", default="-", help="Input SGFF file (default: stdin)")
+    p.add_argument(
+        "input", nargs="?", default="-", help="Input SGFF file (default: stdin)"
+    )
     p.add_argument("-o", "--output", help="Output JSON file")
 
     # Info
     p = subparsers.add_parser("info", help="Show file information")
-    p.add_argument("input", nargs="?", default="-", help="Input SGFF file (default: stdin)")
-    p.add_argument("-v", "--verbose", action="store_true", help="Show detailed contents")
+    p.add_argument(
+        "input", nargs="?", default="-", help="Input SGFF file (default: stdin)"
+    )
+    p.add_argument(
+        "-v", "--verbose", action="store_true", help="Show detailed contents"
+    )
 
     # Tree
     p = subparsers.add_parser("tree", help="Display history tree")
-    p.add_argument("input", nargs="?", default="-", help="Input SGFF file (default: stdin)")
-    p.add_argument("-v", "--verbose", action="store_true", help="Show operation details")
+    p.add_argument(
+        "input", nargs="?", default="-", help="Input SGFF file (default: stdin)"
+    )
+    p.add_argument(
+        "-v", "--verbose", action="store_true", help="Show operation details"
+    )
 
     # Check
     p = subparsers.add_parser(
@@ -278,7 +294,9 @@ def main():
         help="Check for unknown block types",
         description="Silent by default. Use -l to list blocks or -d to dump unknown block data.",
     )
-    p.add_argument("input", nargs="?", default="-", help="Input SGFF file (default: stdin)")
+    p.add_argument(
+        "input", nargs="?", default="-", help="Input SGFF file (default: stdin)"
+    )
     p.add_argument("-l", "--list", action="store_true", help="List all block types")
     p.add_argument("-d", "--dump", action="store_true", help="Dump unknown block data")
 

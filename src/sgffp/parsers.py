@@ -4,14 +4,14 @@ Block type parsers and parsing scheme
 
 import struct
 import lzma
+import logging
 import zlib
 from io import BytesIO
-import logging
 from typing import Dict, Tuple, Optional, Callable, Any, List
 
-logger = logging.getLogger(__name__)
-
 import xmltodict
+
+logger = logging.getLogger(__name__)
 
 
 def parse_blocks(stream) -> Dict[int, List[Any]]:
@@ -28,7 +28,9 @@ def parse_blocks(stream) -> Dict[int, List[Any]]:
         # Skip unknown blocks
         parser = SCHEME.get(block_type)
         if parser is None:
-            logger.debug("Skipping unknown block type %d (%d bytes)", block_type, block_length)
+            logger.debug(
+                "Skipping unknown block type %d (%d bytes)", block_type, block_length
+            )
             continue
 
         parsed = parser(data)
@@ -84,7 +86,7 @@ def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
     """Type 1: Compressed DNA sequence with mystery bytes preserved"""
     offset = 0
 
-    compressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
+    _compressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
     offset += 4
 
     uncompressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
@@ -354,7 +356,9 @@ def parse_ztr(data: bytes) -> Optional[Dict[str, Any]]:
                 start = i * trace_len * 2
                 for j in range(0, trace_len * 2, 2):
                     if start + j + 2 <= len(sample_data):
-                        val = struct.unpack(">H", sample_data[start + j : start + j + 2])[0]
+                        val = struct.unpack(
+                            ">H", sample_data[start + j : start + j + 2]
+                        )[0]
                         samples[base].append(val)
             result["samples"] = samples
 
@@ -488,19 +492,19 @@ def parse_history_node(data: bytes) -> Dict[str, Any]:
 # Format: block_type -> parser_function
 # Only known blocks are included - unknown blocks are skipped
 SCHEME: Dict[int, Callable] = {
-    0: parse_sequence,           # DNA
-    1: parse_compressed_dna,     # 2bit compressed DNA
-    5: parse_xml,                # Primers
-    6: parse_xml,                # Notes
-    7: parse_lzma_xml,           # History tree
-    8: parse_xml,                # Sequence properties
-    10: parse_features,          # Features
-    11: parse_history_node,      # History node container
-    16: parse_trace_container,   # Trace container (nested 18 + 8)
-    17: parse_xml,               # Alignable sequences
-    18: parse_ztr,               # Sequence trace (inside block 16)
-    21: parse_sequence,          # Protein
-    29: parse_lzma_xml,          # History modifier
-    30: parse_lzma_nested,       # History node content
-    32: parse_sequence,          # RNA
+    0: parse_sequence,  # DNA
+    1: parse_compressed_dna,  # 2bit compressed DNA
+    5: parse_xml,  # Primers
+    6: parse_xml,  # Notes
+    7: parse_lzma_xml,  # History tree
+    8: parse_xml,  # Sequence properties
+    10: parse_features,  # Features
+    11: parse_history_node,  # History node container
+    16: parse_trace_container,  # Trace container (nested 18 + 8)
+    17: parse_xml,  # Alignable sequences
+    18: parse_ztr,  # Sequence trace (inside block 16)
+    21: parse_sequence,  # Protein
+    29: parse_lzma_xml,  # History modifier
+    30: parse_lzma_nested,  # History node content
+    32: parse_sequence,  # RNA
 }

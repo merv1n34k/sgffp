@@ -4,8 +4,8 @@ Integration tests for SgffObject property accessors
 
 import pytest
 from pathlib import Path
-from sgffp import SgffReader, SgffWriter
-from sgffp.models import SgffFeature, SgffSegment, SgffHistoryNode
+from sgffp import SgffReader
+from sgffp.models import SgffFeature
 
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -24,7 +24,12 @@ class TestSgffObjectProperties:
         """Access sequence via property"""
         seq = sgff.sequence
         assert seq.length > 0
-        assert seq.value.startswith("A") or seq.value.startswith("T") or seq.value.startswith("G") or seq.value.startswith("C")
+        assert (
+            seq.value.startswith("A")
+            or seq.value.startswith("T")
+            or seq.value.startswith("G")
+            or seq.value.startswith("C")
+        )
 
     def test_features_property(self, sgff):
         """Access features via property"""
@@ -72,9 +77,7 @@ class TestModifyViaProperty:
         """Modify history via property"""
         from sgffp.internal import SgffObject, Cookie
 
-        blocks = {
-            11: [{"node_index": 0, "sequence": "AAA", "sequence_type": 0}]
-        }
+        blocks = {11: [{"node_index": 0, "sequence": "AAA", "sequence_type": 0}]}
         sgff = SgffObject(cookie=Cookie(1, 1, 1), blocks=blocks)
 
         sgff.history.update_node(0, sequence="BBB")
@@ -84,7 +87,6 @@ class TestModifyViaProperty:
 class TestHistoryRoundtrip:
     def test_history_node_serialize_deserialize(self):
         """History node can be written and read back"""
-        from io import BytesIO
         from sgffp.internal import SgffObject, Cookie
         from sgffp.writer import SgffWriter
 
@@ -137,7 +139,23 @@ class TestHistoryRoundtrip:
         from sgffp.writer import SgffWriter
 
         blocks = {
-            7: [{"HistoryTree": {"Node": {"ID": "1", "name": "test", "type": "DNA", "seqLen": "100", "strandedness": "double", "circular": "0", "upstreamModification": "Unmodified", "downstreamModification": "Unmodified", "operation": "invalid"}}}]
+            7: [
+                {
+                    "HistoryTree": {
+                        "Node": {
+                            "ID": "1",
+                            "name": "test",
+                            "type": "DNA",
+                            "seqLen": "100",
+                            "strandedness": "double",
+                            "circular": "0",
+                            "upstreamModification": "Unmodified",
+                            "downstreamModification": "Unmodified",
+                            "operation": "invalid",
+                        }
+                    }
+                }
+            ]
         }
         sgff = SgffObject(cookie=Cookie(1, 1, 1), blocks=blocks)
 

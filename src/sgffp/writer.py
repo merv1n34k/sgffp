@@ -14,10 +14,20 @@ from .internal import SgffObject
 
 # Keys that should be XML attributes (need @ prefix for xmltodict)
 XML_ATTR_KEYS = {
-    "name", "type", "directionality", "range", "color", "text", "int",
-    "nextValidID", "minContinuousMatchLen", "allowMismatch",
-    "minMeltingTemperature", "showAdditionalFivePrimeMatches",
-    "minimumFivePrimeAnnealing", "UTC"
+    "name",
+    "type",
+    "directionality",
+    "range",
+    "color",
+    "text",
+    "int",
+    "nextValidID",
+    "minContinuousMatchLen",
+    "allowMismatch",
+    "minMeltingTemperature",
+    "showAdditionalFivePrimeMatches",
+    "minimumFivePrimeAnnealing",
+    "UTC",
 }
 
 
@@ -238,7 +248,7 @@ class SgffWriter:
         try:
             xml_data = _to_xmltodict(data)
             return xmltodict.unparse(xml_data, full_document=False).encode("utf-8")
-        except:
+        except Exception:
             raise ValueError("Cannot serialize dict to XML")
 
     def _serialize_lzma_xml(self, data: Dict) -> bytes:

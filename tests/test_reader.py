@@ -4,12 +4,11 @@ Tests for SgffReader class
 
 import struct
 from io import BytesIO
-from pathlib import Path
 
 import pytest
 
 from sgffp.reader import SgffReader
-from sgffp.internal import SgffObject, Cookie
+from sgffp.internal import SgffObject
 
 
 def make_minimal_sgff(sequence=b"ATCG", cookie_type=1, export_ver=16, import_ver=8):

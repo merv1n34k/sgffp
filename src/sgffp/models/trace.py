@@ -5,7 +5,7 @@ ZTR format contains chromatogram data from Sanger sequencing.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional, Iterator
+from typing import Dict, List, Any, Optional
 
 from .base import SgffListModel
 
@@ -177,8 +177,7 @@ class SgffTraceList(SgffListModel[SgffTrace]):
             return
         if self._items:
             containers = [
-                {"flags": 0, "blocks": {18: [t.to_dict()]}}
-                for t in self._items
+                {"flags": 0, "blocks": {18: [t.to_dict()]}} for t in self._items
             ]
             self._set_blocks(16, containers)
         else:
