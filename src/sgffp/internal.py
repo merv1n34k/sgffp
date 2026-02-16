@@ -74,6 +74,30 @@ class SgffObject:
     cookie: Cookie
     blocks: Dict[int, List[Any]] = field(default_factory=dict)
 
+    def __post_init__(self):
+        self._sequence: Optional[SgffSequence] = None
+        self._features: Optional[SgffFeatureList] = None
+        self._history: Optional[SgffHistory] = None
+        self._primers: Optional[SgffPrimerList] = None
+        self._notes: Optional[SgffNotes] = None
+        self._properties: Optional[SgffProperties] = None
+        self._alignments: Optional[SgffAlignmentList] = None
+        self._traces: Optional[SgffTraceList] = None
+
+    def invalidate(self) -> None:
+        """Clear cached model instances.
+
+        Call after mutating blocks via set/bset/remove/bremove.
+        """
+        self._sequence = None
+        self._features = None
+        self._history = None
+        self._primers = None
+        self._notes = None
+        self._properties = None
+        self._alignments = None
+        self._traces = None
+
     @property
     def types(self) -> List[int]:
         """List of all block type IDs present"""
@@ -123,42 +147,58 @@ class SgffObject:
     @property
     def sequence(self) -> SgffSequence:
         """DNA/RNA/Protein sequence (blocks 0, 1, 21, 32)"""
-        return SgffSequence(self.blocks)
+        if self._sequence is None:
+            self._sequence = SgffSequence(self.blocks)
+        return self._sequence
 
     @property
     def features(self) -> SgffFeatureList:
         """Annotation features (block 10)"""
-        return SgffFeatureList(self.blocks)
+        if self._features is None:
+            self._features = SgffFeatureList(self.blocks)
+        return self._features
 
     @property
     def history(self) -> SgffHistory:
         """Edit history (blocks 7, 11, 29, 30)"""
-        return SgffHistory(self.blocks)
+        if self._history is None:
+            self._history = SgffHistory(self.blocks)
+        return self._history
 
     @property
     def primers(self) -> SgffPrimerList:
         """Primers (block 5)"""
-        return SgffPrimerList(self.blocks)
+        if self._primers is None:
+            self._primers = SgffPrimerList(self.blocks)
+        return self._primers
 
     @property
     def notes(self) -> SgffNotes:
         """File notes (block 6)"""
-        return SgffNotes(self.blocks)
+        if self._notes is None:
+            self._notes = SgffNotes(self.blocks)
+        return self._notes
 
     @property
     def properties(self) -> SgffProperties:
         """Sequence properties (block 8)"""
-        return SgffProperties(self.blocks)
+        if self._properties is None:
+            self._properties = SgffProperties(self.blocks)
+        return self._properties
 
     @property
     def alignments(self) -> SgffAlignmentList:
         """Alignable sequences (block 17)"""
-        return SgffAlignmentList(self.blocks)
+        if self._alignments is None:
+            self._alignments = SgffAlignmentList(self.blocks)
+        return self._alignments
 
     @property
     def traces(self) -> SgffTraceList:
-        """Sequence traces / chromatograms (block 18)"""
-        return SgffTraceList(self.blocks)
+        """Sequence traces / chromatograms (block 16)"""
+        if self._traces is None:
+            self._traces = SgffTraceList(self.blocks)
+        return self._traces
 
     @property
     def has_history(self) -> bool:
