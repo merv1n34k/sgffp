@@ -15,6 +15,7 @@ from sgffp.parsers import (
     parse_compressed_dna,
     parse_xml,
     parse_lzma_xml,
+    parse_lzma_json,
     parse_lzma_nested,
     parse_features,
     parse_ztr,
@@ -433,10 +434,9 @@ class TestParseHistoryNode:
 
 class TestScheme:
     def test_scheme_has_expected_types(self):
-        """SCHEME contains expected block types"""
-        expected = [0, 1, 5, 6, 7, 8, 10, 11, 16, 17, 18, 21, 29, 30, 32]
-        for block_type in expected:
-            assert block_type in SCHEME
+        """SCHEME contains all expected block types"""
+        expected = {0, 1, 5, 6, 7, 8, 10, 11, 14, 16, 17, 18, 20, 21, 28, 29, 30, 32, 34}
+        assert set(SCHEME.keys()) == expected
 
     def test_scheme_sequence_types(self):
         """Sequence types (0, 21, 32) use parse_sequence"""
@@ -450,6 +450,22 @@ class TestScheme:
     def test_scheme_features(self):
         """Type 10 uses parse_features"""
         assert SCHEME[10] == parse_features
+
+    def test_scheme_xml_blocks(self):
+        """XML block types 14, 20, 28 use parse_xml"""
+        assert SCHEME[14] == parse_xml
+        assert SCHEME[20] == parse_xml
+        assert SCHEME[28] == parse_xml
+
+    def test_scheme_lzma_json_block(self):
+        """Block 34 uses parse_lzma_json"""
+        assert SCHEME[34] == parse_lzma_json
+
+    def test_scheme_skips_auto_generated(self):
+        """Auto-generated blocks 2, 3, 13 are NOT in SCHEME"""
+        assert 2 not in SCHEME
+        assert 3 not in SCHEME
+        assert 13 not in SCHEME
 
 
 # =============================================================================
@@ -519,3 +535,24 @@ class TestParseBlocks:
         """Empty stream returns empty dict"""
         result = parse_blocks(BytesIO(b""))
         assert result == {}
+
+
+# =============================================================================
+# LZMA JSON Parser Tests
+# =============================================================================
+
+
+class TestParseLzmaJson:
+    def test_parse_lzma_json_valid(self):
+        """Parse valid LZMA-compressed JSON"""
+        import json
+
+        data = {"key": "value", "count": 42, "nested": {"a": [1, 2, 3]}}
+        compressed = lzma.compress(json.dumps(data).encode("utf-8"))
+        result = parse_lzma_json(compressed)
+        assert result == data
+
+    def test_parse_lzma_json_invalid(self):
+        """Invalid data returns None"""
+        result = parse_lzma_json(b"not lzma data")
+        assert result is None
