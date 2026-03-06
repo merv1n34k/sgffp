@@ -197,3 +197,51 @@ class TestSgffObject:
         """bremove on missing type returns False"""
         result = sample_object.bremove(99)
         assert result is False
+
+
+# =============================================================================
+# SgffObject.new() Factory Tests
+# =============================================================================
+
+
+class TestSgffObjectNew:
+    def test_new_default(self):
+        """new() creates object with default cookie and empty blocks"""
+        sgff = SgffObject.new()
+        assert sgff.cookie.type_of_sequence == 1
+        assert sgff.cookie.export_version == 15
+        assert sgff.cookie.import_version == 19
+        assert sgff.blocks == {}
+
+    def test_new_with_sequence(self):
+        """new() with sequence creates block 0"""
+        sgff = SgffObject.new("ATCGATCG")
+        assert 0 in sgff.blocks
+        assert sgff.sequence.value == "ATCGATCG"
+        assert sgff.sequence.length == 8
+
+    def test_new_circular(self):
+        """new() propagates topology and strandedness"""
+        sgff = SgffObject.new("ATCG", topology="circular", strandedness="single")
+        assert sgff.sequence.topology == "circular"
+        assert sgff.sequence.is_circular is True
+        assert sgff.sequence.strandedness == "single"
+
+    def test_new_rna(self):
+        """new() with rna uses block 32 and type_of_sequence=7"""
+        sgff = SgffObject.new("AUCG", sequence_type="rna")
+        assert sgff.cookie.type_of_sequence == 7
+        assert 32 in sgff.blocks
+        assert sgff.sequence.block_id == 32
+
+    def test_new_protein(self):
+        """new() with protein uses block 21 and type_of_sequence=2"""
+        sgff = SgffObject.new("MVLSPADKTNVKAAWG", sequence_type="protein")
+        assert sgff.cookie.type_of_sequence == 2
+        assert 21 in sgff.blocks
+        assert sgff.sequence.block_id == 21
+
+    def test_new_invalid_sequence_type(self):
+        """new() raises ValueError for invalid sequence_type"""
+        with pytest.raises(ValueError, match="Invalid sequence_type"):
+            SgffObject.new("ATCG", sequence_type="invalid")

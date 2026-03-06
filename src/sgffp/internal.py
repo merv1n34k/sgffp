@@ -21,9 +21,9 @@ from .models import (
 class Cookie:
     """File header metadata"""
 
-    type_of_sequence: int
-    export_version: int
-    import_version: int
+    type_of_sequence: int = 1
+    export_version: int = 15
+    import_version: int = 19
 
 
 class BlockList:
@@ -73,6 +73,34 @@ class SgffObject:
 
     cookie: Cookie
     blocks: Dict[int, List[Any]] = field(default_factory=dict)
+
+    TYPE_MAP = {"dna": 1, "protein": 2, "rna": 7}
+    BLOCK_MAP = {"dna": 0, "protein": 21, "rna": 32}
+
+    @classmethod
+    def new(
+        cls,
+        sequence: str = "",
+        *,
+        topology: str = "linear",
+        strandedness: str = "double",
+        sequence_type: str = "dna",
+    ) -> "SgffObject":
+        """Create a new SnapGene file with sensible defaults."""
+        if sequence_type not in cls.TYPE_MAP:
+            raise ValueError(
+                f"Invalid sequence_type: {sequence_type!r} "
+                f"(expected one of {list(cls.TYPE_MAP)})"
+            )
+
+        sgff = cls(cookie=Cookie(type_of_sequence=cls.TYPE_MAP[sequence_type]))
+        if sequence:
+            sgff.sequence.data.value = sequence
+            sgff.sequence.data.topology = topology
+            sgff.sequence.data.strandedness = strandedness
+            sgff.sequence._block_id = cls.BLOCK_MAP[sequence_type]
+            sgff.sequence._sync()
+        return sgff
 
     def __post_init__(self):
         self._sequence: Optional[SgffSequence] = None
