@@ -5,6 +5,7 @@ Block type parsers and parsing scheme
 import struct
 import lzma
 import logging
+import json
 import zlib
 from io import BytesIO
 from typing import Dict, Tuple, Optional, Callable, Any, List
@@ -83,7 +84,17 @@ def parse_sequence(data: bytes) -> Dict[str, Any]:
 
 
 def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
-    """Type 1: Compressed DNA sequence with mystery bytes preserved"""
+    """Type 1: Compressed DNA with decoded metadata header
+
+    Header (14 bytes after lengths):
+    - byte 0:    format version (typically 30/0x1e)
+    - bytes 1-3: reserved (always 0)
+    - byte 4:    strandedness flag (1 = double-stranded)
+    - bytes 5-7: reserved (always 0)
+    - bytes 8-9: uint16 BE property flags (1 = default, 257 = extended)
+    - bytes 10-11: reserved (always 0)
+    - bytes 12-13: uint16 BE sequence length (matches uncompressed_length)
+    """
     offset = 0
 
     _compressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
@@ -92,9 +103,14 @@ def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
     uncompressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
     offset += 4
 
-    # Mystery bytes (14 bytes) - preserve for round-trip
-    mystery = data[offset : offset + 14]
+    # Decode the 14-byte metadata header
+    header = data[offset : offset + 14]
     offset += 14
+
+    format_version = header[0]
+    strandedness_flag = header[4]
+    property_flags = struct.unpack(">H", header[8:10])[0]
+    header_seq_length = struct.unpack(">H", header[12:14])[0]
 
     total_bytes = (uncompressed_length * 2 + 7) // 8
     seq_data = data[offset : offset + total_bytes]
@@ -102,7 +118,10 @@ def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
     return {
         "sequence": octet_to_dna(seq_data, uncompressed_length).decode("ascii"),
         "length": uncompressed_length,
-        "mystery": mystery,
+        "format_version": format_version,
+        "strandedness_flag": strandedness_flag,
+        "property_flags": property_flags,
+        "header_seq_length": header_seq_length,
     }
 
 
@@ -148,6 +167,16 @@ def parse_lzma_xml(data: bytes) -> Optional[Dict]:
         return _clean_xml_dict(parsed)
     except Exception as e:
         logger.debug("Failed to parse LZMA XML: %s", e)
+        return None
+
+
+def parse_lzma_json(data: bytes) -> Optional[Any]:
+    """Type 34: LZMA-compressed JSON (e.g. RNA structure predictions)"""
+    try:
+        decompressed = lzma.decompress(data)
+        return json.loads(decompressed)
+    except Exception as e:
+        logger.debug("Failed to parse LZMA JSON: %s", e)
         return None
 
 
@@ -490,7 +519,8 @@ def parse_history_node(data: bytes) -> Dict[str, Any]:
 # =============================================================================
 
 # Format: block_type -> parser_function
-# Only known blocks are included - unknown blocks are skipped
+# Known blocks are parsed; unknown blocks (2, 3, 13) are skipped
+# as SnapGene regenerates them on import.
 SCHEME: Dict[int, Callable] = {
     0: parse_sequence,  # DNA
     1: parse_compressed_dna,  # 2bit compressed DNA
@@ -500,11 +530,15 @@ SCHEME: Dict[int, Callable] = {
     8: parse_xml,  # Sequence properties
     10: parse_features,  # Features
     11: parse_history_node,  # History node container
+    14: parse_xml,  # Custom enzyme sets
     16: parse_trace_container,  # Trace container (nested 18 + 8)
     17: parse_xml,  # Alignable sequences
     18: parse_ztr,  # Sequence trace (inside block 16)
+    20: parse_xml,  # Strand colors
     21: parse_sequence,  # Protein
+    28: parse_xml,  # Enzyme visibilities
     29: parse_lzma_xml,  # History modifier
     30: parse_lzma_nested,  # History node content
     32: parse_sequence,  # RNA
+    34: parse_lzma_json,  # RNA structure predictions (LZMA JSON)
 }

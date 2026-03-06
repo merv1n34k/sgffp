@@ -3,6 +3,7 @@ SnapGene file writer
 """
 
 import struct
+import json
 import lzma
 from typing import Union, BinaryIO, Any, Dict
 from pathlib import Path
@@ -145,8 +146,13 @@ class SgffWriter:
         if block_type == 18:
             return self._serialize_ztr(data)
 
-        # XML blocks
-        if block_type in (5, 6, 8, 17):
+        # RNA structure predictions (34) - LZMA JSON
+        if block_type == 34:
+            return self._serialize_lzma_json(data)
+
+        # XML blocks (5=primers, 6=notes, 8=properties, 14=custom enzymes,
+        # 17=alignments, 20=strand colors, 28=enzyme visibilities)
+        if block_type in (5, 6, 8, 14, 17, 20, 28):
             return self._serialize_xml(data)
 
         # Default: try XML conversion
@@ -170,21 +176,27 @@ class SgffWriter:
         return bytes([props]) + sequence.encode("utf-8")
 
     def _serialize_compressed_dna(self, data: Dict) -> bytes:
-        """Serialize compressed DNA with mystery bytes"""
+        """Serialize compressed DNA with decoded metadata header"""
         sequence = data.get("sequence", "")
         length = len(sequence)
-        mystery = data.get("mystery", b"\x00" * 14)
+
+        # Reconstruct 14-byte metadata header from decoded fields
+        header = bytearray(14)
+        header[0] = data.get("format_version", 30)
+        header[4] = data.get("strandedness_flag", 1)
+        struct.pack_into(">H", header, 8, data.get("property_flags", 1))
+        struct.pack_into(">H", header, 12, data.get("header_seq_length", length))
 
         # Encode sequence to 2-bit
         encoded = self._dna_to_octet(sequence)
 
-        # compressed_length = 4 (uncompressed_length) + 14 (mystery) + len(encoded)
+        # compressed_length = 4 (uncompressed_length) + 14 (header) + len(encoded)
         compressed_length = 4 + 14 + len(encoded)
 
         buf = BytesIO()
         buf.write(struct.pack(">I", compressed_length))
         buf.write(struct.pack(">I", length))
-        buf.write(mystery)
+        buf.write(bytes(header))
         buf.write(encoded)
 
         return buf.getvalue()
@@ -256,6 +268,11 @@ class SgffWriter:
         xml_bytes = self._serialize_xml(data)
         return lzma.compress(xml_bytes)
 
+    def _serialize_lzma_json(self, data: Any) -> bytes:
+        """Serialize to LZMA-compressed JSON (block 34)"""
+        json_bytes = json.dumps(data, separators=(",", ":")).encode("utf-8")
+        return lzma.compress(json_bytes)
+
     def _serialize_history_node(self, data: Dict) -> bytes:
         """Serialize history node (block 11) to binary format"""
         buf = BytesIO()
@@ -267,7 +284,7 @@ class SgffWriter:
         buf.write(bytes([seq_type]))
 
         if seq_type == 1:
-            # Compressed DNA
+            # Compressed DNA with decoded metadata header
             sequence = data.get("sequence", "")
             encoded = self._dna_to_octet(sequence)
             compressed_length = 4 + 14 + len(encoded)
@@ -275,8 +292,15 @@ class SgffWriter:
             buf.write(struct.pack(">I", compressed_length))
             buf.write(struct.pack(">I", len(sequence)))
 
-            mystery = data.get("mystery", b"\x00" * 14)
-            buf.write(mystery[:14])
+            # Reconstruct 14-byte metadata header
+            header = bytearray(14)
+            header[0] = data.get("format_version", 30)
+            header[4] = data.get("strandedness_flag", 1)
+            struct.pack_into(">H", header, 8, data.get("property_flags", 1))
+            struct.pack_into(
+                ">H", header, 12, data.get("header_seq_length", len(sequence))
+            )
+            buf.write(bytes(header))
             buf.write(encoded)
 
         elif seq_type in (0, 21, 32):

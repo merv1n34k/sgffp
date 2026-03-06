@@ -184,9 +184,14 @@ class TestParseCompressedDna:
         assert result["sequence"] == "GATCGATC"
         assert result["length"] == 8
 
-    def test_parse_compressed_dna_mystery_bytes(self):
-        """All 14 mystery bytes are preserved"""
-        mystery = b"\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e"
+    def test_parse_compressed_dna_header_fields(self):
+        """14-byte metadata header is decoded into named fields"""
+        header = bytearray(14)
+        header[0] = 30  # format_version
+        header[4] = 1  # strandedness_flag
+        struct.pack_into(">H", header, 8, 1)  # property_flags
+        struct.pack_into(">H", header, 12, 4)  # header_seq_length
+
         base_count = 4
         encoded = bytes([0b00011011])
 
@@ -195,13 +200,15 @@ class TestParseCompressedDna:
         data = (
             struct.pack(">I", compressed_length)
             + struct.pack(">I", base_count)
-            + mystery
+            + bytes(header)
             + encoded
         )
 
         result = parse_compressed_dna(data)
-        assert result["mystery"] == mystery
-        assert len(result["mystery"]) == 14
+        assert result["format_version"] == 30
+        assert result["strandedness_flag"] == 1
+        assert result["property_flags"] == 1
+        assert result["header_seq_length"] == 4
 
 
 # =============================================================================
