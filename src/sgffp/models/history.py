@@ -91,6 +91,8 @@ class SgffInputSummary:
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffInputSummary":
+        if not data:
+            return cls(manipulation="", val1=0, val2=0)
         # Parse enzyme pairs (name1/siteCount1, name2/siteCount2, ...)
         enzymes = []
         i = 1
@@ -742,11 +744,73 @@ class SgffHistory(SgffModel):
             self._remove_block(29)
 
     # -------------------------------------------------------------------------
+    # Sequence Update
+    # -------------------------------------------------------------------------
+
+    def update_for_new_sequence(
+        self,
+        new_sequence: str,
+        old_sequence: str,
+        *,
+        name: str = "",
+        circular: bool = False,
+        strandedness: str = "double",
+        seq_type: str = "DNA",
+    ) -> None:
+        """Update history tree after a sequence modification.
+
+        Demotes the current root to a child node and creates a new root
+        that reflects the modified sequence, preserving the full history.
+        """
+        if not self.tree or not self.tree.root:
+            return
+
+        old_root = self.tree.root
+
+        # Allocate a new ID (max existing + 1)
+        max_id = max(self.tree.nodes.keys()) if self.tree.nodes else 0
+        new_id = max_id + 1
+
+        # Save old root's sequence into block 11 (it was using block 0)
+        if old_root.id not in self.nodes:
+            old_node = SgffHistoryNode(
+                index=old_root.id,
+                sequence=old_sequence,
+                sequence_type=1,  # compressed DNA
+                length=len(old_sequence),
+            )
+            self.nodes[old_root.id] = old_node
+
+        # Create new root tree node wrapping the old one
+        new_root = SgffHistoryTreeNode(
+            id=new_id,
+            name=name or old_root.name,
+            type=seq_type,
+            seq_len=len(new_sequence),
+            strandedness=strandedness,
+            circular=circular,
+            operation=HistoryOperation.INVALID,
+            upstream_modification=old_root.upstream_modification,
+            downstream_modification=old_root.downstream_modification,
+            children=[old_root],
+        )
+        old_root.parent = new_root
+
+        # Replace tree with new root
+        self._tree._root = new_root
+        self._tree._nodes_by_id[new_id] = new_root
+
+        self._linked = False
+        self._link_tree_and_nodes()
+        self._sync_tree()
+        self._sync_nodes()
+
+    # -------------------------------------------------------------------------
     # Clear
     # -------------------------------------------------------------------------
 
     def clear(self) -> None:
-        """Remove all history"""
+        """Remove all history."""
         self._tree = None
         self._nodes = {}
         self._modifiers = []
