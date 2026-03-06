@@ -13,38 +13,30 @@ import xmltodict
 
 from .internal import SgffObject
 
-# Keys that should be XML attributes (need @ prefix for xmltodict)
-XML_ATTR_KEYS = {
-    "name",
-    "type",
-    "directionality",
-    "range",
-    "color",
-    "text",
-    "int",
-    "nextValidID",
-    "minContinuousMatchLen",
-    "allowMismatch",
-    "minMeltingTemperature",
-    "showAdditionalFivePrimeMatches",
-    "minimumFivePrimeAnnealing",
-    "UTC",
-}
+# Uppercase keys that are XML attributes, not child elements
+_UPPERCASE_ATTRS = {"ID"}
 
 
 def _to_xmltodict(obj: Any) -> Any:
-    """Convert clean JSON dict to xmltodict format."""
+    """Convert clean JSON dict back to xmltodict format.
+
+    SnapGene XML convention: element names start with uppercase,
+    attribute names start with lowercase. When _text is present,
+    all sibling keys are attributes regardless of case.
+    """
     if isinstance(obj, dict):
+        has_text = "_text" in obj
         result = {}
         for key, value in obj.items():
-            # Add @ prefix for known attribute keys
-            if key in XML_ATTR_KEYS:
-                new_key = f"@{key}"
-            elif key == "_text":
-                new_key = "#text"
+            if key == "_text":
+                result["#text"] = _to_xmltodict(value)
+            elif has_text:
+                # Sibling of _text — always an attribute
+                result[f"@{key}"] = _to_xmltodict(value)
+            elif key[0:1].islower() or key in _UPPERCASE_ATTRS:
+                result[f"@{key}"] = _to_xmltodict(value)
             else:
-                new_key = key
-            result[new_key] = _to_xmltodict(value)
+                result[key] = _to_xmltodict(value)
         return result
     elif isinstance(obj, list):
         return [_to_xmltodict(item) for item in obj]
@@ -150,9 +142,12 @@ class SgffWriter:
         if block_type == 34:
             return self._serialize_lzma_json(data)
 
-        # XML blocks (5=primers, 6=notes, 8=properties, 14=custom enzymes,
-        # 17=alignments, 20=strand colors, 28=enzyme visibilities)
-        if block_type in (5, 6, 8, 14, 17, 20, 28):
+        # XML blocks with declaration (matches SnapGene behavior)
+        if block_type in (5, 14, 28):
+            return self._serialize_xml(data, xml_declaration=True)
+
+        # XML blocks without declaration
+        if block_type in (6, 8, 17, 20):
             return self._serialize_xml(data)
 
         # Default: try XML conversion
@@ -218,11 +213,16 @@ class SgffWriter:
 
     def _serialize_features(self, data: Dict) -> bytes:
         """Serialize features to XML."""
+        # Use preserved raw XML when available for lossless roundtrip
+        raw = data.get("_raw")
+        if raw:
+            return self._serialize_xml(raw, xml_declaration=True)
+
         features = data.get("features", [])
         if not features:
             return self._serialize_xml(data)
 
-        # Convert back to XML structure
+        # Fallback: reconstruct XML from extracted features
         xml_features = []
         for f in features:
             strand_rev = {".": "0", "+": "1", "-": "2", "=": "3"}
@@ -253,20 +253,34 @@ class SgffWriter:
             xml_features.append(xml_f)
 
         xml_dict = {"Features": {"Feature": xml_features}}
-        return xmltodict.unparse(xml_dict, full_document=False).encode("utf-8")
+        xml_str = xmltodict.unparse(
+            xml_dict, full_document=False, short_empty_elements=True
+        )
+        return ('<?xml version="1.0"?>' + xml_str).encode("utf-8")
 
-    def _serialize_xml(self, data: Dict) -> bytes:
-        """Serialize dict to XML"""
+    def _serialize_xml(
+        self, data: Dict, *, xml_declaration: bool = False
+    ) -> bytes:
+        """Serialize dict to XML."""
         try:
             xml_data = _to_xmltodict(data)
-            return xmltodict.unparse(xml_data, full_document=False).encode("utf-8")
+            xml_str = xmltodict.unparse(
+                xml_data, full_document=False, short_empty_elements=True
+            )
+            if xml_declaration:
+                xml_str = '<?xml version="1.0"?>' + xml_str
+            return xml_str.encode("utf-8")
         except Exception:
             raise ValueError("Cannot serialize dict to XML")
 
     def _serialize_lzma_xml(self, data: Dict) -> bytes:
         """Serialize dict to LZMA-compressed XML."""
-        xml_bytes = self._serialize_xml(data)
-        return lzma.compress(xml_bytes)
+        xml_data = _to_xmltodict(data)
+        xml_str = xmltodict.unparse(
+            xml_data, full_document=False, short_empty_elements=True
+        )
+        xml_str = '<?xml version="1.0" encoding="UTF-8"?>' + xml_str
+        return lzma.compress(xml_str.encode("utf-8"))
 
     def _serialize_lzma_json(self, data: Any) -> bytes:
         """Serialize to LZMA-compressed JSON."""
@@ -312,13 +326,18 @@ class SgffWriter:
 
         # seq_type == 29: modifier only, no sequence data
 
-        # Nested node_info (block 30 content)
+        # Nested node_info — bare TLV blocks (not LZMA-wrapped)
         node_info = data.get("node_info")
         if node_info:
-            lzma_data = self._serialize_lzma_nested(node_info)
-            buf.write(bytes([0x1E]))  # Block type 30
-            buf.write(struct.pack(">I", len(lzma_data)))
-            buf.write(lzma_data)
+            for block_type, items in node_info.items():
+                if not isinstance(block_type, int):
+                    continue
+                for item in items:
+                    block_data = self._serialize(block_type, item)
+                    if block_data:
+                        buf.write(bytes([block_type]))
+                        buf.write(struct.pack(">I", len(block_data)))
+                        buf.write(block_data)
 
         return buf.getvalue()
 

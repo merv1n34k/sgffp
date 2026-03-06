@@ -189,15 +189,15 @@ STRAND_MAP = {"0": ".", "1": "+", "2": "-", "3": "="}
 
 def parse_features(data: bytes) -> Optional[Dict]:
     """Parse features block with qualifier extraction."""
-    parsed = parse_xml(data)
-    if not parsed or "Features" not in parsed:
-        return parsed
+    raw = parse_xml(data)
+    if not raw or "Features" not in raw:
+        return raw
 
     # Handle empty <Features></Features> element (xmltodict returns None)
-    if parsed["Features"] is None:
-        return {"features": []}
+    if raw["Features"] is None:
+        return {"features": [], "_raw": raw}
 
-    features_data = parsed["Features"].get("Feature", [])
+    features_data = raw["Features"].get("Feature", [])
     if not isinstance(features_data, list):
         features_data = [features_data]
 
@@ -217,10 +217,6 @@ def parse_features(data: bytes) -> Optional[Dict]:
         # Parse qualifiers
         qualifiers = _parse_qualifiers(feature.get("Q", []))
 
-        # Defaults
-        if "label" not in qualifiers:
-            qualifiers["label"] = feature.get("name", "")
-
         color = segments[0].get("color", "") if segments else ""
 
         features.append(
@@ -236,7 +232,7 @@ def parse_features(data: bytes) -> Optional[Dict]:
             }
         )
 
-    return {"features": features}
+    return {"features": features, "_raw": raw}
 
 
 def _parse_qualifiers(quals: Any) -> Dict[str, Any]:
