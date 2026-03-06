@@ -315,7 +315,7 @@ Sequence alignment data. Top-level element: `<AlignableSequences>`.
 
 **Only appears inside block 16 containers**, never at the top level.
 
-ZTR (Zettabyte Trace Record) format for Sanger sequencing chromatograms.
+ZTR format (Staden Package) for Sanger sequencing chromatograms.
 
 **Header:**
 
