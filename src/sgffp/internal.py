@@ -7,8 +7,11 @@ from typing import Dict, Any, Optional, List, Iterator
 
 from .models import (
     SgffSequence,
+    SgffFeature,
     SgffFeatureList,
+    SgffSegment,
     SgffHistory,
+    SgffPrimer,
     SgffPrimerList,
     SgffNotes,
     SgffProperties,
@@ -255,3 +258,40 @@ class SgffObject:
     @property
     def has_traces(self) -> bool:
         return 16 in self.blocks
+
+    def add_feature(
+        self,
+        name: str,
+        type: str,
+        start: int,
+        end: int,
+        strand: str = "+",
+        **kwargs,
+    ) -> "SgffObject":
+        """Add an annotation feature. Returns self for chaining."""
+        feature = SgffFeature(
+            name=name,
+            type=type,
+            strand=strand,
+            segments=[SgffSegment(start=start, end=end)],
+            **kwargs,
+        )
+        self.features.add(feature)
+        return self
+
+    def add_primer(
+        self,
+        name: str,
+        sequence: str,
+        bind_position: Optional[int] = None,
+        bind_strand: str = "+",
+    ) -> "SgffObject":
+        """Add a primer. Returns self for chaining."""
+        primer = SgffPrimer(
+            name=name,
+            sequence=sequence,
+            bind_position=bind_position,
+            bind_strand=bind_strand,
+        )
+        self.primers.add(primer)
+        return self

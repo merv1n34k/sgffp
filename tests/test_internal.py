@@ -245,3 +245,57 @@ class TestSgffObjectNew:
         """new() raises ValueError for invalid sequence_type"""
         with pytest.raises(ValueError, match="Invalid sequence_type"):
             SgffObject.new("ATCG", sequence_type="invalid")
+
+
+# =============================================================================
+# Convenience Builder Method Tests
+# =============================================================================
+
+
+class TestSgffObjectBuilder:
+    def test_add_feature(self):
+        """add_feature adds a feature to the features list"""
+        sgff = SgffObject.new("ATCGATCG")
+        sgff.add_feature("GFP", "CDS", 0, 8)
+        assert len(sgff.features) == 1
+        assert sgff.features[0].name == "GFP"
+        assert sgff.features[0].type == "CDS"
+        assert sgff.features[0].start == 0
+        assert sgff.features[0].end == 8
+
+    def test_add_primer(self):
+        """add_primer adds a primer to the primers list"""
+        sgff = SgffObject.new("ATCGATCG")
+        sgff.add_primer("fwd", "ATCG", bind_position=0)
+        assert len(sgff.primers) == 1
+        assert sgff.primers[0].name == "fwd"
+        assert sgff.primers[0].sequence == "ATCG"
+        assert sgff.primers[0].bind_position == 0
+
+    def test_chaining(self):
+        """Builder methods return self for chaining"""
+        sgff = (
+            SgffObject.new("ATCGATCG", topology="circular")
+            .add_feature("GFP", "CDS", 0, 4)
+            .add_feature("AmpR", "CDS", 4, 8, strand="-")
+            .add_primer("fwd", "ATCG", bind_position=0)
+        )
+        assert len(sgff.features) == 2
+        assert len(sgff.primers) == 1
+        assert sgff.features[0].name == "GFP"
+        assert sgff.features[1].name == "AmpR"
+        assert sgff.features[1].strand == "-"
+
+    def test_add_feature_creates_block(self):
+        """add_feature on empty object creates block 10"""
+        sgff = SgffObject.new("ATCG")
+        assert 10 not in sgff.blocks
+        sgff.add_feature("test", "misc_feature", 0, 4)
+        assert 10 in sgff.blocks
+
+    def test_add_primer_creates_block(self):
+        """add_primer on empty object creates block 5"""
+        sgff = SgffObject.new("ATCG")
+        assert 5 not in sgff.blocks
+        sgff.add_primer("fwd", "ATCG")
+        assert 5 in sgff.blocks
