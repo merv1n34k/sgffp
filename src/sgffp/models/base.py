@@ -8,11 +8,7 @@ T = TypeVar("T")
 
 
 class SgffModel:
-    """
-    Base wrapper for block data.
-
-    Holds reference to blocks dict - modifications update source directly.
-    """
+    """Base wrapper for block data."""
 
     BLOCK_IDS: tuple = ()
 
@@ -25,7 +21,7 @@ class SgffModel:
         return items[0] if items else None
 
     def _set_block(self, block_id: int, value: Any) -> None:
-        """Set block value (replaces existing)"""
+        """Set block value."""
         self._blocks[block_id] = [value]
 
     def _get_blocks(self, block_id: int) -> List[Any]:
@@ -48,32 +44,28 @@ class SgffModel:
 
     @property
     def exists(self) -> bool:
-        """Check if any relevant blocks exist"""
+        """Check if any relevant blocks exist."""
         return any(bid in self._blocks for bid in self.BLOCK_IDS)
 
 
 class SgffListModel(SgffModel, Generic[T]):
-    """
-    Base for list-based block data (features, primers, etc.)
-
-    Subclasses must implement _load() and _sync().
-    """
+    """Base for list-based block data."""
 
     def __init__(self, blocks: Dict[int, List[Any]]):
         super().__init__(blocks)
         self._items: Optional[List[T]] = None
 
     def _load(self) -> List[T]:
-        """Load and parse items from block"""
+        """Load and parse items from block storage."""
         raise NotImplementedError
 
     def _sync(self) -> None:
-        """Write items back to blocks"""
+        """Write items to block storage."""
         raise NotImplementedError
 
     @property
     def items(self) -> List[T]:
-        """Get parsed items (lazy load)"""
+        """Get parsed items."""
         if self._items is None:
             self._items = self._load()
         return self._items
@@ -88,12 +80,12 @@ class SgffListModel(SgffModel, Generic[T]):
         return self.items[idx]
 
     def add(self, item: T) -> None:
-        """Add item and sync to blocks"""
+        """Add item and sync."""
         self.items.append(item)
         self._sync()
 
     def remove(self, idx: int) -> bool:
-        """Remove item by index and sync"""
+        """Remove item by index and sync."""
         if 0 <= idx < len(self.items):
             self.items.pop(idx)
             self._sync()

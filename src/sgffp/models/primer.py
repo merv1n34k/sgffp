@@ -1,5 +1,5 @@
 """
-Primer model (block 5)
+Primer model for oligonucleotide definitions
 """
 
 from dataclasses import dataclass, field
@@ -44,7 +44,7 @@ class SgffPrimer:
 
 
 class SgffPrimerList(SgffListModel[SgffPrimer]):
-    """Primer list wrapper for block 5"""
+    """Primer list with block management."""
 
     BLOCK_IDS = (5,)
 

@@ -1,7 +1,5 @@
 """
-Trace model for SnapGene sequence trace data (block 18)
-
-ZTR format contains chromatogram data from Sanger sequencing.
+Trace model for sequence chromatogram data
 """
 
 from dataclasses import dataclass, field
@@ -69,7 +67,7 @@ class SgffTraceSamples:
 
 @dataclass
 class SgffTrace:
-    """Single sequence trace (chromatogram) data"""
+    """Single sequence trace (chromatogram)"""
 
     bases: str = ""
     positions: List[int] = field(default_factory=list)
@@ -158,12 +156,12 @@ class SgffTrace:
 
 
 class SgffTraceList(SgffListModel[SgffTrace]):
-    """Trace list wrapper for block 16 (trace container)"""
+    """Trace list with container management."""
 
     BLOCK_IDS = (16,)
 
     def _load(self) -> List[SgffTrace]:
-        """Load traces from block 16 containers"""
+        """Load traces from trace container blocks."""
         traces = []
         for container in self._get_blocks(16):
             nested = container.get("blocks", {})
@@ -172,7 +170,7 @@ class SgffTraceList(SgffListModel[SgffTrace]):
         return traces
 
     def _sync(self) -> None:
-        """Write traces back to block 16 containers"""
+        """Write traces to block storage."""
         if self._items is None:
             return
         if self._items:

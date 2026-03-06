@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_blocks(stream) -> Dict[int, List[Any]]:
-    """Parse multiple TLV blocks from stream into {type: [values]}"""
+    """Parse TLV blocks from stream."""
     result: Dict[int, List[Any]] = {}
 
     while True:
@@ -44,7 +44,7 @@ def parse_blocks(stream) -> Dict[int, List[Any]]:
 
 
 def read_header(stream) -> Tuple[Optional[int], Optional[int]]:
-    """Read TLV header: 1 byte type + 4 bytes length"""
+    """Read TLV block header."""
     type_byte = stream.read(1)
     if not type_byte:
         return None, None
@@ -52,7 +52,7 @@ def read_header(stream) -> Tuple[Optional[int], Optional[int]]:
 
 
 def octet_to_dna(raw_data: bytes, base_count: int) -> bytes:
-    """Convert 2-bit GATC encoding to ASCII"""
+    """Convert 2-bit encoded DNA to ASCII sequence."""
     bases = b"GATC"
     result = bytearray()
     for byte in raw_data:
@@ -68,7 +68,7 @@ def octet_to_dna(raw_data: bytes, base_count: int) -> bytes:
 
 
 def parse_sequence(data: bytes) -> Dict[str, Any]:
-    """Type 0, 21, 32: Uncompressed sequence with properties"""
+    """Parse uncompressed sequence block with property flags."""
     props = data[0]
     sequence = data[1:].decode("utf-8", errors="ignore")
 
@@ -84,17 +84,7 @@ def parse_sequence(data: bytes) -> Dict[str, Any]:
 
 
 def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
-    """Type 1: Compressed DNA with decoded metadata header
-
-    Header (14 bytes after lengths):
-    - byte 0:    format version (typically 30/0x1e)
-    - bytes 1-3: reserved (always 0)
-    - byte 4:    strandedness flag (1 = double-stranded)
-    - bytes 5-7: reserved (always 0)
-    - bytes 8-9: uint16 BE property flags (1 = default, 257 = extended)
-    - bytes 10-11: reserved (always 0)
-    - bytes 12-13: uint16 BE sequence length (matches uncompressed_length)
-    """
+    """Parse compressed DNA block with 2-bit GATC encoding and metadata header."""
     offset = 0
 
     _compressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
@@ -131,7 +121,7 @@ def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
 
 
 def _clean_xml_dict(obj: Any) -> Any:
-    """Convert xmltodict format to pure JSON (remove @ prefixes, handle #text)"""
+    """Convert xmltodict format to clean JSON keys."""
     if isinstance(obj, dict):
         result = {}
         for key, value in obj.items():
@@ -149,7 +139,7 @@ def _clean_xml_dict(obj: Any) -> Any:
 
 
 def parse_xml(data: bytes) -> Optional[Dict]:
-    """Parse XML blocks into dict with clean JSON format"""
+    """Parse XML block into dict with clean JSON keys."""
     try:
         xml_str = data.decode("utf-8", errors="ignore")
         parsed = xmltodict.parse(xml_str)
@@ -160,7 +150,7 @@ def parse_xml(data: bytes) -> Optional[Dict]:
 
 
 def parse_lzma_xml(data: bytes) -> Optional[Dict]:
-    """Parse LZMA-compressed XML into dict with clean JSON format"""
+    """Parse LZMA-compressed XML block into dict with clean JSON keys."""
     try:
         decompressed = lzma.decompress(data)
         parsed = xmltodict.parse(decompressed.decode("utf-8", errors="ignore"))
@@ -171,7 +161,7 @@ def parse_lzma_xml(data: bytes) -> Optional[Dict]:
 
 
 def parse_lzma_json(data: bytes) -> Optional[Any]:
-    """Type 34: LZMA-compressed JSON (e.g. RNA structure predictions)"""
+    """Parse LZMA-compressed JSON block."""
     try:
         decompressed = lzma.decompress(data)
         return json.loads(decompressed)
@@ -181,7 +171,7 @@ def parse_lzma_json(data: bytes) -> Optional[Any]:
 
 
 def parse_lzma_nested(data: bytes) -> Optional[Dict[int, List[Any]]]:
-    """Type 30: LZMA with nested TLV blocks"""
+    """Parse LZMA-compressed block containing nested TLV blocks."""
     try:
         decompressed = lzma.decompress(data)
         return parse_blocks(BytesIO(decompressed))
@@ -198,7 +188,7 @@ STRAND_MAP = {"0": ".", "1": "+", "2": "-", "3": "="}
 
 
 def parse_features(data: bytes) -> Optional[Dict]:
-    """Type 10: Features with full qualifier extraction"""
+    """Parse features block with qualifier extraction."""
     parsed = parse_xml(data)
     if not parsed or "Features" not in parsed:
         return parsed
@@ -250,7 +240,7 @@ def parse_features(data: bytes) -> Optional[Dict]:
 
 
 def _parse_qualifiers(quals: Any) -> Dict[str, Any]:
-    """Extract qualifiers from feature"""
+    """Extract qualifiers from feature data."""
     if not quals:
         return {}
     if not isinstance(quals, list):
@@ -274,7 +264,7 @@ def _parse_qualifiers(quals: Any) -> Dict[str, Any]:
 
 
 def _extract_value(v: Dict) -> Any:
-    """Extract typed value from qualifier"""
+    """Extract typed value from qualifier data."""
     if "text" in v:
         return v["text"]
     if "int" in v:
@@ -294,7 +284,7 @@ ZTR_MAGIC = b"\xaeZTR\r\n\x1a\n"
 
 
 def _ztr_decompress(chunk_data: bytes) -> bytes:
-    """Decompress ZTR chunk data based on format byte"""
+    """Decompress ZTR chunk data."""
     if not chunk_data:
         return chunk_data
 
@@ -315,19 +305,7 @@ def _ztr_decompress(chunk_data: bytes) -> bytes:
 
 
 def parse_ztr(data: bytes) -> Optional[Dict[str, Any]]:
-    """
-    Type 18: Sequence trace (ZTR format)
-
-    Parses ZTR chunks:
-    - BASE: base calls (sequence)
-    - BPOS: base-to-sample positions
-    - CNF4: confidence scores
-    - SMP4: combined ACGT trace samples
-    - SAMP: individual channel trace samples
-    - TEXT: metadata key-value pairs
-    - CLIP: quality clip boundaries
-    - COMM: comments
-    """
+    """Parse ZTR format sequence trace data."""
     if len(data) < 10 or data[:8] != ZTR_MAGIC:
         return None
 
@@ -442,7 +420,7 @@ def parse_ztr(data: bytes) -> Optional[Dict[str, Any]]:
 
 
 def parse_trace_container(data: bytes) -> Dict[str, Any]:
-    """Type 16: Trace container - 4 byte flags + nested TLV blocks (18, 8, etc.)"""
+    """Parse trace container block with flags and nested TLV blocks."""
     result: Dict[str, Any] = {}
 
     # 4-byte header flags
@@ -464,7 +442,7 @@ def parse_trace_container(data: bytes) -> Dict[str, Any]:
 
 
 def parse_history_node(data: bytes) -> Dict[str, Any]:
-    """Type 11: History node - delegates to other parsers"""
+    """Parse history node block containing sequence snapshot and nested blocks."""
     node = {}
     offset = 0
 

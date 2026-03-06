@@ -1,5 +1,5 @@
 """
-Sequence properties model (block 8)
+Sequence properties model
 """
 
 from typing import Dict, List, Any, Optional
@@ -8,7 +8,7 @@ from .base import SgffModel
 
 
 class SgffProperties(SgffModel):
-    """Sequence properties from block 8"""
+    """Sequence properties."""
 
     BLOCK_IDS = (8,)
 

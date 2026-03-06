@@ -1,10 +1,5 @@
 """
-History models for SnapGene edit history (blocks 7, 11, 29, 30)
-
-Block 7:  History tree - recursive structure of cloning operations
-Block 11: History nodes - sequence snapshots at each history point
-Block 29: History modifiers - metadata-only changes (no sequence)
-Block 30: History content - nested blocks within nodes (features, primers, etc.)
+History models for SnapGene edit history
 """
 
 from dataclasses import dataclass, field
@@ -48,7 +43,7 @@ class HistoryOperation(str, Enum):
 
     @classmethod
     def _missing_(cls, value: str) -> "HistoryOperation":
-        """Return INVALID for unknown operations"""
+        """Handle unknown operations."""
         return cls.INVALID
 
 
@@ -126,11 +121,7 @@ class SgffInputSummary:
 
 @dataclass
 class SgffHistoryTreeNode:
-    """
-    Single node in the history tree (from block 7).
-
-    Tree grows downward: root is current state, children are previous states.
-    """
+    """Single node in the history tree."""
 
     id: int
     name: str
@@ -153,7 +144,7 @@ class SgffHistoryTreeNode:
 
     @property
     def input_summary(self) -> Optional[SgffInputSummary]:
-        """First input summary (convenience for single-summary nodes)"""
+        """First input summary."""
         return self.input_summaries[0] if self.input_summaries else None
 
     # Tree structure
@@ -164,7 +155,7 @@ class SgffHistoryTreeNode:
     def from_dict(
         cls, data: Dict, parent: Optional["SgffHistoryTreeNode"] = None
     ) -> "SgffHistoryTreeNode":
-        """Parse a Node dict from block 7"""
+        """Create tree node from parsed dict."""
         # Parse oligos
         oligos = []
         oligo_data = data.get("Oligo", [])
@@ -233,7 +224,7 @@ class SgffHistoryTreeNode:
         return node
 
     def to_dict(self) -> Dict:
-        """Serialize back to block 7 format"""
+        """Serialize to dict."""
         result: Dict[str, Any] = {
             "name": self.name,
             "type": self.type,
@@ -289,12 +280,7 @@ class SgffHistoryTreeNode:
 
 
 class SgffHistoryTree:
-    """
-    History tree structure (block 7) with traversal methods.
-
-    The tree represents cloning workflow history. Root is current state,
-    children are previous states (tree grows backward in time).
-    """
+    """History tree structure with traversal methods."""
 
     def __init__(self, data: Optional[Dict] = None):
         self._data = data
@@ -302,7 +288,7 @@ class SgffHistoryTree:
         self._nodes_by_id: Optional[Dict[int, SgffHistoryTreeNode]] = None
 
     def _parse(self) -> None:
-        """Parse tree from raw data"""
+        """Parse tree from raw dict data."""
         if self._root is not None:
             return
 
@@ -346,15 +332,7 @@ class SgffHistoryTree:
     def walk(
         self, from_node: Optional[SgffHistoryTreeNode] = None
     ) -> Iterator[SgffHistoryTreeNode]:
-        """
-        Iterate nodes in pre-order (parent before children).
-
-        Args:
-            from_node: Starting node (defaults to root)
-
-        Yields:
-            Each node in pre-order (current state first, then previous states)
-        """
+        """Iterate nodes in pre-order (parent before children)."""
         start = from_node or self.root
         if not start:
             return
@@ -366,17 +344,7 @@ class SgffHistoryTree:
     def walk_reverse(
         self, from_node: Optional[SgffHistoryTreeNode] = None
     ) -> Iterator[SgffHistoryTreeNode]:
-        """
-        Iterate nodes in post-order (children before parent).
-
-        Useful for processing inputs before outputs (chronological order).
-
-        Args:
-            from_node: Starting node (defaults to root)
-
-        Yields:
-            Each node in post-order (oldest states first, current last)
-        """
+        """Iterate nodes in post-order (children before parent)."""
         start = from_node or self.root
         if not start:
             return
@@ -386,11 +354,7 @@ class SgffHistoryTree:
         yield start
 
     def ancestors(self, node_id: int) -> List[SgffHistoryTreeNode]:
-        """
-        Get ancestor chain from node up to root.
-
-        Returns list starting with the node itself, ending with root.
-        """
+        """Get ancestor chain from node up to root."""
         result = []
         node = self.get(node_id)
         while node:
@@ -399,14 +363,14 @@ class SgffHistoryTree:
         return result
 
     def to_dict(self) -> Dict:
-        """Serialize back to block 7 format"""
+        """Serialize to dict."""
         if not self.root:
             return {}
         return {"HistoryTree": {"Node": self.root.to_dict()}}
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffHistoryTree":
-        """Create tree from block 7 data"""
+        """Create tree from parsed dict."""
         return cls(data)
 
     def __len__(self) -> int:
@@ -425,24 +389,14 @@ class SgffHistoryTree:
 
 
 class SgffHistoryNodeContent:
-    """
-    Content snapshot from block 30 nested in block 11.
-
-    Wraps a blocks dict (like SgffObject) and provides model accessors.
-    Each history node is essentially a full SnapGene file state.
-    """
+    """Content snapshot for a history node with model accessors."""
 
     def __init__(self, blocks: Dict[int, List[Any]] = None):
         self._blocks = blocks or {}
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffHistoryNodeContent":
-        """
-        Parse node_info structure.
-
-        Args:
-            data: The node_info dict, typically {30: [{...}]} with integer keys
-        """
+        """Create from parsed node_info dict."""
         # Content is nested under 30 key (integer, not string)
         content_list = data.get(30, data.get("30", []))
         if not content_list:
@@ -452,7 +406,7 @@ class SgffHistoryNodeContent:
         return cls(content)
 
     def to_dict(self) -> Dict:
-        """Serialize back to node_info format"""
+        """Serialize to dict."""
         if self._blocks:
             return {30: [self._blocks]}
         return {}
@@ -544,11 +498,7 @@ class SgffHistoryNodeContent:
 
 @dataclass
 class SgffHistoryNode:
-    """
-    Single history node containing a sequence snapshot (block 11).
-
-    Links to tree node via index == tree_node.id.
-    """
+    """Single history node containing a sequence snapshot."""
 
     index: int
     sequence: str = ""
@@ -562,32 +512,32 @@ class SgffHistoryNode:
 
     @property
     def features(self) -> SgffFeatureList:
-        """Shortcut to content.features"""
+        """Annotation features."""
         return self.content.features if self.content else SgffFeatureList({})
 
     @property
     def primers(self) -> SgffPrimerList:
-        """Shortcut to content.primers"""
+        """Primers."""
         return self.content.primers if self.content else SgffPrimerList({})
 
     @property
     def notes(self) -> SgffNotes:
-        """Shortcut to content.notes"""
+        """File notes."""
         return self.content.notes if self.content else SgffNotes({})
 
     @property
     def properties(self) -> SgffProperties:
-        """Shortcut to content.properties"""
+        """Sequence properties."""
         return self.content.properties if self.content else SgffProperties({})
 
     @property
     def traces(self) -> SgffTraceList:
-        """Shortcut to content.traces"""
+        """Sequence traces."""
         return self.content.traces if self.content else SgffTraceList({})
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffHistoryNode":
-        """Create from parsed block 11 data"""
+        """Create from parsed dict."""
         # Parse content from node_info
         content = None
         node_info = data.get("node_info")
@@ -604,7 +554,7 @@ class SgffHistoryNode:
         )
 
     def to_dict(self) -> Dict:
-        """Convert to dict for block storage"""
+        """Serialize to dict."""
         result: Dict[str, Any] = {
             "node_index": self.index,
             "sequence": self.sequence,
@@ -629,12 +579,7 @@ class SgffHistoryNode:
 
 
 class SgffHistory(SgffModel):
-    """
-    SnapGene edit history.
-
-    Wraps blocks 7 (tree), 11 (nodes), 29 (modifiers), 30 (content).
-    Provides unified access to history tree and sequence snapshots.
-    """
+    """SnapGene edit history with tree, nodes, and modifiers."""
 
     BLOCK_IDS = (7, 11, 29, 30)
 
@@ -651,7 +596,7 @@ class SgffHistory(SgffModel):
 
     @property
     def tree(self) -> Optional[SgffHistoryTree]:
-        """History tree structure (block 7)"""
+        """History tree structure."""
         if self._tree is None:
             data = self._get_block(7)
             self._tree = SgffHistoryTree(data) if data else None
@@ -680,7 +625,7 @@ class SgffHistory(SgffModel):
 
     @property
     def nodes(self) -> Dict[int, SgffHistoryNode]:
-        """Sequence snapshots indexed by node_index (block 11)"""
+        """Sequence snapshots indexed by node_index."""
         if self._nodes is None:
             self._nodes = {}
             for data in self._get_blocks(11):
@@ -694,12 +639,7 @@ class SgffHistory(SgffModel):
         return self.nodes.get(index)
 
     def get_sequence_at(self, index: int) -> Optional[str]:
-        """
-        Get sequence at specific history node.
-
-        For the root node (current state), returns the main file sequence
-        if no history node exists for that index.
-        """
+        """Get sequence at specific history node."""
         node = self.get_node(index)
         if node and node.sequence:
             return node.sequence
@@ -752,7 +692,7 @@ class SgffHistory(SgffModel):
 
     @property
     def modifiers(self) -> List[Dict]:
-        """Modifier metadata from block 29"""
+        """Modifier metadata."""
         if self._modifiers is None:
             self._modifiers = self._get_blocks(29)
         return self._modifiers
@@ -762,7 +702,7 @@ class SgffHistory(SgffModel):
     # -------------------------------------------------------------------------
 
     def _link_tree_and_nodes(self) -> None:
-        """Set tree_node reference on each SgffHistoryNode"""
+        """Link history nodes to their tree nodes."""
         if self._linked:
             return
         if self._tree is None or self._nodes is None:
@@ -780,14 +720,14 @@ class SgffHistory(SgffModel):
     # -------------------------------------------------------------------------
 
     def _sync_tree(self) -> None:
-        """Write tree back to block 7"""
+        """Write tree to block storage."""
         if self._tree:
             self._set_block(7, self._tree.to_dict())
         else:
             self._remove_block(7)
 
     def _sync_nodes(self) -> None:
-        """Write nodes back to block 11"""
+        """Write nodes to block storage."""
         if self._nodes:
             node_dicts = [node.to_dict() for node in self._nodes.values()]
             self._set_blocks(11, node_dicts)
@@ -795,7 +735,7 @@ class SgffHistory(SgffModel):
             self._remove_block(11)
 
     def _sync_modifiers(self) -> None:
-        """Write modifiers back to block 29"""
+        """Write modifiers to block storage."""
         if self._modifiers:
             self._set_blocks(29, self._modifiers)
         else:

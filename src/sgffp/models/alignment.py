@@ -1,5 +1,5 @@
 """
-Alignable sequences model (block 17)
+Alignable sequences model
 """
 
 from dataclasses import dataclass, field
@@ -32,7 +32,7 @@ class SgffAlignment:
 
 
 class SgffAlignmentList(SgffListModel[SgffAlignment]):
-    """Alignable sequences wrapper for block 17"""
+    """Alignable sequences list with block management."""
 
     BLOCK_IDS = (17,)
 

@@ -1,5 +1,5 @@
 """
-Notes model (block 6)
+Notes model for file metadata
 """
 
 from typing import Dict, List, Any, Optional
@@ -8,7 +8,7 @@ from .base import SgffModel
 
 
 class SgffNotes(SgffModel):
-    """File notes and metadata from block 6"""
+    """File notes and metadata."""
 
     BLOCK_IDS = (6,)
 

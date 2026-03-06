@@ -1,5 +1,5 @@
 """
-Sequence model for DNA/RNA/Protein (blocks 0, 1, 21, 32)
+Sequence model for DNA, RNA, and Protein data
 """
 
 from dataclasses import dataclass
@@ -51,9 +51,7 @@ class SgffSequenceData:
 
 
 class SgffSequence(SgffModel):
-    """
-    Sequence wrapper for blocks 0 (DNA), 1 (compressed), 21 (protein), 32 (RNA).
-    """
+    """Sequence wrapper for DNA, RNA, and Protein blocks."""
 
     BLOCK_IDS = (0, 1, 21, 32)
 
@@ -127,14 +125,14 @@ class SgffSequence(SgffModel):
 
     @property
     def block_id(self) -> Optional[int]:
-        """Which block type is used (0, 1, 21, or 32)"""
+        """Active block type for this sequence."""
         if self._block_id is None:
             self._block_id = self._detect_block()
         return self._block_id
 
     @block_id.setter
     def block_id(self, value: int) -> None:
-        """Change block type (e.g., switch from compressed to uncompressed)"""
+        """Set the sequence block type."""
         if value not in self.BLOCK_IDS:
             raise ValueError(f"Invalid block id: {value}")
 
@@ -146,7 +144,7 @@ class SgffSequence(SgffModel):
         self._sync()
 
     def _sync(self) -> None:
-        """Write data back to blocks"""
+        """Write data to block storage."""
         if self._data is None:
             return
 

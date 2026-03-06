@@ -68,11 +68,7 @@ class BlockList:
 
 @dataclass
 class SgffObject:
-    """
-    Container for SnapGene file data
-
-    Blocks stored as {int: [values]} for clean access
-    """
+    """Container for SnapGene file data."""
 
     cookie: Cookie
     blocks: Dict[int, List[Any]] = field(default_factory=dict)
@@ -116,10 +112,7 @@ class SgffObject:
         self._traces: Optional[SgffTraceList] = None
 
     def invalidate(self) -> None:
-        """Clear cached model instances.
-
-        Call after mutating blocks via set/bset/remove/bremove.
-        """
+        """Clear cached model instances."""
         self._sequence = None
         self._features = None
         self._history = None
@@ -135,12 +128,12 @@ class SgffObject:
         return list(self.blocks.keys())
 
     def type(self, block_id: int) -> BlockList:
-        """Get blocks by type ID, returns BlockList for chaining"""
+        """Get blocks by type ID."""
         items = self.blocks.get(block_id, [])
         return BlockList(block_id, items)
 
     def set(self, block_id: int, value: Any) -> None:
-        """Add value to block type (creates or appends)"""
+        """Add value to block type."""
         if block_id not in self.blocks:
             self.blocks[block_id] = []
         self.blocks[block_id].append(value)
@@ -158,7 +151,7 @@ class SgffObject:
         return True
 
     def bset(self, block_id: int, value: Any) -> None:
-        """Set entire block (replaces if exists)"""
+        """Set entire block."""
         if not isinstance(value, list):
             value = [value]
         self.blocks[block_id] = value
@@ -171,62 +164,62 @@ class SgffObject:
         return False
 
     def block(self, block_id: int) -> Optional[Any]:
-        """Raw block access by ID"""
+        """Get first block value by ID."""
         items = self.blocks.get(block_id, [])
         return items[0] if items else None
 
     @property
     def sequence(self) -> SgffSequence:
-        """DNA/RNA/Protein sequence (blocks 0, 1, 21, 32)"""
+        """DNA/RNA/Protein sequence."""
         if self._sequence is None:
             self._sequence = SgffSequence(self.blocks)
         return self._sequence
 
     @property
     def features(self) -> SgffFeatureList:
-        """Annotation features (block 10)"""
+        """Annotation features."""
         if self._features is None:
             self._features = SgffFeatureList(self.blocks)
         return self._features
 
     @property
     def history(self) -> SgffHistory:
-        """Edit history (blocks 7, 11, 29, 30)"""
+        """Edit history."""
         if self._history is None:
             self._history = SgffHistory(self.blocks)
         return self._history
 
     @property
     def primers(self) -> SgffPrimerList:
-        """Primers (block 5)"""
+        """Primers."""
         if self._primers is None:
             self._primers = SgffPrimerList(self.blocks)
         return self._primers
 
     @property
     def notes(self) -> SgffNotes:
-        """File notes (block 6)"""
+        """File notes."""
         if self._notes is None:
             self._notes = SgffNotes(self.blocks)
         return self._notes
 
     @property
     def properties(self) -> SgffProperties:
-        """Sequence properties (block 8)"""
+        """Sequence properties."""
         if self._properties is None:
             self._properties = SgffProperties(self.blocks)
         return self._properties
 
     @property
     def alignments(self) -> SgffAlignmentList:
-        """Alignable sequences (block 17)"""
+        """Alignable sequences."""
         if self._alignments is None:
             self._alignments = SgffAlignmentList(self.blocks)
         return self._alignments
 
     @property
     def traces(self) -> SgffTraceList:
-        """Sequence traces / chromatograms (block 16)"""
+        """Sequence traces / chromatograms."""
         if self._traces is None:
             self._traces = SgffTraceList(self.blocks)
         return self._traces

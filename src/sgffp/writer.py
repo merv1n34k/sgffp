@@ -33,7 +33,7 @@ XML_ATTR_KEYS = {
 
 
 def _to_xmltodict(obj: Any) -> Any:
-    """Convert clean JSON back to xmltodict format (add @ prefix for attributes)"""
+    """Convert clean JSON dict to xmltodict format."""
     if isinstance(obj, dict):
         result = {}
         for key, value in obj.items():
@@ -159,7 +159,7 @@ class SgffWriter:
         return self._serialize_xml(data)
 
     def _serialize_sequence(self, data: Dict) -> bytes:
-        """Serialize uncompressed sequence with properties"""
+        """Serialize uncompressed sequence with property flags."""
         props = 0
         if data.get("topology") == "circular":
             props |= 0x01
@@ -176,7 +176,7 @@ class SgffWriter:
         return bytes([props]) + sequence.encode("utf-8")
 
     def _serialize_compressed_dna(self, data: Dict) -> bytes:
-        """Serialize compressed DNA with decoded metadata header"""
+        """Serialize compressed DNA block."""
         sequence = data.get("sequence", "")
         length = len(sequence)
 
@@ -217,7 +217,7 @@ class SgffWriter:
         return bytes(result)
 
     def _serialize_features(self, data: Dict) -> bytes:
-        """Serialize features back to XML"""
+        """Serialize features to XML."""
         features = data.get("features", [])
         if not features:
             return self._serialize_xml(data)
@@ -264,17 +264,17 @@ class SgffWriter:
             raise ValueError("Cannot serialize dict to XML")
 
     def _serialize_lzma_xml(self, data: Dict) -> bytes:
-        """Serialize dict to LZMA-compressed XML (blocks 7, 29)"""
+        """Serialize dict to LZMA-compressed XML."""
         xml_bytes = self._serialize_xml(data)
         return lzma.compress(xml_bytes)
 
     def _serialize_lzma_json(self, data: Any) -> bytes:
-        """Serialize to LZMA-compressed JSON (block 34)"""
+        """Serialize to LZMA-compressed JSON."""
         json_bytes = json.dumps(data, separators=(",", ":")).encode("utf-8")
         return lzma.compress(json_bytes)
 
     def _serialize_history_node(self, data: Dict) -> bytes:
-        """Serialize history node (block 11) to binary format"""
+        """Serialize history node to binary format."""
         buf = BytesIO()
 
         node_index = data.get("node_index", 0)
@@ -323,7 +323,7 @@ class SgffWriter:
         return buf.getvalue()
 
     def _serialize_trace_container(self, data: Dict) -> bytes:
-        """Serialize trace container (block 16) - 4 byte flags + nested TLV blocks"""
+        """Serialize trace container with flags and nested TLV blocks."""
         buf = BytesIO()
 
         # 4-byte flags header
@@ -345,7 +345,7 @@ class SgffWriter:
         return buf.getvalue()
 
     def _serialize_lzma_nested(self, data: Dict) -> bytes:
-        """Serialize nested TLV blocks with LZMA compression (block 30)"""
+        """Serialize nested TLV blocks with LZMA compression."""
         buf = BytesIO()
 
         for block_type, items in data.items():
@@ -362,7 +362,7 @@ class SgffWriter:
         return lzma.compress(buf.getvalue())
 
     def _serialize_ztr(self, data: Dict) -> bytes:
-        """Serialize trace data to ZTR format (block 18)"""
+        """Serialize trace data to ZTR format."""
         buf = BytesIO()
 
         # ZTR magic and version

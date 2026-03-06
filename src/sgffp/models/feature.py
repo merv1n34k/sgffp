@@ -1,5 +1,5 @@
 """
-Feature model for annotations (block 10)
+Feature model for sequence annotations
 """
 
 from dataclasses import dataclass, field
@@ -87,7 +87,7 @@ class SgffFeature:
 
 
 class SgffFeatureList(SgffListModel[SgffFeature]):
-    """Feature list wrapper for block 10"""
+    """Feature list with block management."""
 
     BLOCK_IDS = (10,)
 
