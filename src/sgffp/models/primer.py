@@ -28,6 +28,10 @@ class SgffPrimer:
             _raw=data,
         )
 
+    def clear_binding_sites(self) -> None:
+        """Remove cached binding site data so SnapGene recalculates it."""
+        self._raw.pop("BindingSite", None)
+
     def to_dict(self) -> Dict:
         result = dict(self._raw)
         result.update(

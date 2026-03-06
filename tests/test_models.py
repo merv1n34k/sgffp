@@ -627,9 +627,8 @@ class TestSgffHistoryNodeContent:
         }
         content = SgffHistoryNodeContent(blocks)
         data = content.to_dict()
-        assert 30 in data
-        assert 8 in data[30][0]
-        assert 5 in data[30][0]
+        assert 8 in data
+        assert 5 in data
 
     def test_block_access(self):
         """Access raw blocks"""

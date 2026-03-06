@@ -153,6 +153,9 @@ class SgffHistoryTreeNode:
     children: List["SgffHistoryTreeNode"] = field(default_factory=list, repr=False)
     parent: Optional["SgffHistoryTreeNode"] = field(default=None, repr=False)
 
+    # Raw parsed dict for lossless roundtrip
+    _raw: Dict = field(default_factory=dict, repr=False)
+
     @classmethod
     def from_dict(
         cls, data: Dict, parent: Optional["SgffHistoryTreeNode"] = None
@@ -212,6 +215,7 @@ class SgffHistoryTreeNode:
             history_colors=data.get("HistoryColors"),
             features=features,
             parent=parent,
+            _raw=data,
         )
 
         # Parse child nodes recursively
@@ -226,18 +230,26 @@ class SgffHistoryTreeNode:
         return node
 
     def to_dict(self) -> Dict:
-        """Serialize to dict."""
-        result: Dict[str, Any] = {
-            "name": self.name,
-            "type": self.type,
-            "seqLen": str(self.seq_len),
-            "strandedness": self.strandedness,
-            "ID": str(self.id),
-            "circular": "1" if self.circular else "0",
-            "upstreamModification": self.upstream_modification,
-            "downstreamModification": self.downstream_modification,
-            "operation": self.operation,
-        }
+        """Serialize to dict, preserving unknown fields from raw data."""
+        # Start from raw data to preserve fields the model doesn't capture
+        result: Dict[str, Any] = dict(self._raw) if self._raw else {}
+
+        # Remove child nodes from raw (we serialize them separately)
+        result.pop("Node", None)
+
+        # Override modeled fields
+        result["name"] = self.name
+        result["type"] = self.type
+        result["seqLen"] = str(self.seq_len)
+        result["strandedness"] = self.strandedness
+        result["ID"] = str(self.id)
+        result["circular"] = "1" if self.circular else "0"
+        result["operation"] = self.operation
+
+        if "upstreamModification" in self._raw or self.upstream_modification != "Unmodified":
+            result["upstreamModification"] = self.upstream_modification
+        if "downstreamModification" in self._raw or self.downstream_modification != "Unmodified":
+            result["downstreamModification"] = self.downstream_modification
 
         if self.resurrectable:
             result["resurrectable"] = "1"
@@ -399,19 +411,19 @@ class SgffHistoryNodeContent:
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffHistoryNodeContent":
         """Create from parsed node_info dict."""
-        # Content is nested under 30 key (integer, not string)
+        # node_info can be {30: [{blocks}]} or {8: [...], 10: [...], ...}
         content_list = data.get(30, data.get("30", []))
-        if not content_list:
-            return cls({})
-
-        content = content_list[0] if content_list else {}
-        return cls(content)
+        if content_list:
+            content = content_list[0] if content_list else {}
+            return cls(content)
+        # Direct blocks dict (no block 30 wrapper)
+        if data:
+            return cls(data)
+        return cls({})
 
     def to_dict(self) -> Dict:
         """Serialize to dict."""
-        if self._blocks:
-            return {30: [self._blocks]}
-        return {}
+        return self._blocks
 
     @property
     def blocks(self) -> Dict[int, List[Any]]:
@@ -507,7 +519,12 @@ class SgffHistoryNode:
     sequence_type: int = 0  # 0=DNA, 1=compressed DNA, 21=protein, 32=RNA
     length: int = 0
     content: Optional[SgffHistoryNodeContent] = None
-    _mystery: bytes = field(default_factory=lambda: b"\x00" * 14, repr=False)
+
+    # Compressed DNA metadata header fields
+    format_version: int = 30
+    strandedness_flag: int = 1
+    property_flags: int = 1
+    header_seq_length: Optional[int] = None
 
     # Set by SgffHistory after loading
     tree_node: Optional[SgffHistoryTreeNode] = field(default=None, repr=False)
@@ -540,7 +557,6 @@ class SgffHistoryNode:
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffHistoryNode":
         """Create from parsed dict."""
-        # Parse content from node_info
         content = None
         node_info = data.get("node_info")
         if node_info:
@@ -552,7 +568,10 @@ class SgffHistoryNode:
             sequence_type=data.get("sequence_type", 0),
             length=data.get("length", 0),
             content=content,
-            _mystery=data.get("mystery", b"\x00" * 14),
+            format_version=data.get("format_version", 30),
+            strandedness_flag=data.get("strandedness_flag", 1),
+            property_flags=data.get("property_flags", 1),
+            header_seq_length=data.get("header_seq_length"),
         )
 
     def to_dict(self) -> Dict:
@@ -566,11 +585,19 @@ class SgffHistoryNode:
         if self.length:
             result["length"] = self.length
 
+        # Compressed DNA metadata header fields
+        if self.sequence_type == 1:
+            result["format_version"] = self.format_version
+            result["strandedness_flag"] = self.strandedness_flag
+            result["property_flags"] = self.property_flags
+            result["header_seq_length"] = (
+                self.header_seq_length
+                if self.header_seq_length is not None
+                else self.length
+            )
+
         if self.content and self.content.exists:
             result["node_info"] = self.content.to_dict()
-
-        if self._mystery:
-            result["mystery"] = self._mystery
 
         return result
 
@@ -747,63 +774,17 @@ class SgffHistory(SgffModel):
     # Sequence Update
     # -------------------------------------------------------------------------
 
-    def update_for_new_sequence(
-        self,
-        new_sequence: str,
-        old_sequence: str,
-        *,
-        name: str = "",
-        circular: bool = False,
-        strandedness: str = "double",
-        seq_type: str = "DNA",
-    ) -> None:
-        """Update history tree after a sequence modification.
+    def update_for_new_sequence(self, new_sequence: str) -> None:
+        """Update history tree to reflect a modified sequence.
 
-        Demotes the current root to a child node and creates a new root
-        that reflects the modified sequence, preserving the full history.
+        Updates the root node's seqLen to match the new sequence length.
+        The existing history tree structure is preserved unchanged.
         """
         if not self.tree or not self.tree.root:
             return
 
-        old_root = self.tree.root
-
-        # Allocate a new ID (max existing + 1)
-        max_id = max(self.tree.nodes.keys()) if self.tree.nodes else 0
-        new_id = max_id + 1
-
-        # Save old root's sequence into block 11 (it was using block 0)
-        if old_root.id not in self.nodes:
-            old_node = SgffHistoryNode(
-                index=old_root.id,
-                sequence=old_sequence,
-                sequence_type=1,  # compressed DNA
-                length=len(old_sequence),
-            )
-            self.nodes[old_root.id] = old_node
-
-        # Create new root tree node wrapping the old one
-        new_root = SgffHistoryTreeNode(
-            id=new_id,
-            name=name or old_root.name,
-            type=seq_type,
-            seq_len=len(new_sequence),
-            strandedness=strandedness,
-            circular=circular,
-            operation=HistoryOperation.INVALID,
-            upstream_modification=old_root.upstream_modification,
-            downstream_modification=old_root.downstream_modification,
-            children=[old_root],
-        )
-        old_root.parent = new_root
-
-        # Replace tree with new root
-        self._tree._root = new_root
-        self._tree._nodes_by_id[new_id] = new_root
-
-        self._linked = False
-        self._link_tree_and_nodes()
+        self.tree.root.seq_len = len(new_sequence)
         self._sync_tree()
-        self._sync_nodes()
 
     # -------------------------------------------------------------------------
     # Clear
