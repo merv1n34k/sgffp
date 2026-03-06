@@ -237,3 +237,113 @@ class TestMultipleRoundtrips:
 
         # After stabilization, output should be identical
         assert written2 == written3
+
+
+# =============================================================================
+# De Novo Creation Roundtrip Tests
+# =============================================================================
+
+
+class TestDeNovoRoundtrip:
+    def test_new_write_read_roundtrip(self):
+        """Create via .new(), write to bytes, read back, verify"""
+        sgff = SgffObject.new("ATCGATCGATCG")
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert restored.cookie.type_of_sequence == 1
+        assert restored.cookie.export_version == 15
+        assert restored.cookie.import_version == 19
+        assert restored.sequence.value == "ATCGATCGATCG"
+        assert restored.sequence.strandedness == "double"
+
+    def test_new_circular_roundtrip(self):
+        """Circular topology survives roundtrip"""
+        sgff = SgffObject.new("ATCGATCG", topology="circular")
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert restored.sequence.is_circular is True
+        assert restored.sequence.topology == "circular"
+
+    def test_new_with_features_roundtrip(self):
+        """Features survive roundtrip"""
+        sgff = SgffObject.new("ATCGATCGATCGATCG")
+        sgff.add_feature("GFP", "CDS", 0, 8)
+        sgff.add_feature("AmpR", "CDS", 8, 16, strand="-")
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert len(restored.features) == 2
+        assert restored.features[0].name == "GFP"
+        assert restored.features[0].type == "CDS"
+        assert restored.features[0].start == 0
+        assert restored.features[0].end == 8
+        assert restored.features[1].name == "AmpR"
+        assert restored.features[1].strand == "-"
+
+    def test_new_with_notes_roundtrip(self):
+        """Notes survive roundtrip"""
+        sgff = SgffObject.new("ATCG")
+        sgff.notes.description = "Test plasmid"
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert restored.has_notes
+        assert restored.notes.description == "Test plasmid"
+
+    def test_new_with_primers_roundtrip(self):
+        """Primers survive roundtrip"""
+        sgff = SgffObject.new("ATCGATCG")
+        sgff.add_primer("fwd", "ATCG", bind_position=0)
+        sgff.add_primer("rev", "GATC", bind_position=4, bind_strand="-")
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert len(restored.primers) == 2
+        assert restored.primers[0].name == "fwd"
+        assert restored.primers[0].sequence == "ATCG"
+        assert restored.primers[1].name == "rev"
+        assert restored.primers[1].bind_strand == "-"
+
+    def test_chained_build_roundtrip(self):
+        """Full chained build survives roundtrip"""
+        sgff = (
+            SgffObject.new("ATCGATCGATCGATCG", topology="circular")
+            .add_feature("GFP", "CDS", 0, 8)
+            .add_primer("fwd", "ATCG", bind_position=0)
+        )
+        sgff.notes.description = "Built with builder"
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert restored.sequence.value == "ATCGATCGATCGATCG"
+        assert restored.sequence.is_circular is True
+        assert len(restored.features) == 1
+        assert restored.features[0].name == "GFP"
+        assert len(restored.primers) == 1
+        assert restored.primers[0].name == "fwd"
+        assert restored.notes.description == "Built with builder"
+
+    def test_new_double_roundtrip_stable(self):
+        """De novo file output stabilizes after first roundtrip"""
+        sgff = (
+            SgffObject.new("ATCGATCG", topology="circular")
+            .add_feature("test", "CDS", 0, 8)
+        )
+
+        written1 = SgffWriter.to_bytes(sgff)
+        restored1 = SgffReader.from_bytes(written1)
+        written2 = SgffWriter.to_bytes(restored1)
+        restored2 = SgffReader.from_bytes(written2)
+        written3 = SgffWriter.to_bytes(restored2)
+
+        # Content preserved across roundtrips
+        assert restored1.sequence.value == "ATCGATCG"
+        assert restored1.features[0].name == "test"
+        # Output stabilizes after first parse
+        assert written2 == written3
