@@ -15,9 +15,11 @@ from sgffp.models import (
     SgffHistoryOligo,
     SgffInputSummary,
     HistoryOperation,
+    SgffPrimer,
     SgffPrimerList,
     SgffNotes,
     SgffProperties,
+    SgffAlignment,
     SgffAlignmentList,
     SgffTrace,
     SgffTraceList,
@@ -960,3 +962,109 @@ class TestSgffTraceList:
         traces = SgffTraceList(blocks)
         assert "SgffTraceList" in repr(traces)
         assert "count=2" in repr(traces)
+
+
+class TestSgffPrimerExtras:
+    def test_primer_extras_preserved(self):
+        """Unknown attrs survive roundtrip via to_dict()"""
+        data = {
+            "name": "FWD",
+            "sequence": "ATCG",
+            "recentID": "5",
+            "description": "Forward primer",
+            "color": "#FF0000",
+            "dateAdded": "2024-01-01",
+            "BindingSite": {"location": "1-20", "boundStrand": "top"},
+        }
+        primer = SgffPrimer.from_dict(data)
+        assert primer.name == "FWD"
+        assert primer.extras["recentID"] == "5"
+        assert primer.extras["color"] == "#FF0000"
+        assert "BindingSite" in primer.extras
+
+        result = primer.to_dict()
+        assert result["name"] == "FWD"
+        assert result["recentID"] == "5"
+        assert result["description"] == "Forward primer"
+        assert result["color"] == "#FF0000"
+        assert result["BindingSite"]["location"] == "1-20"
+
+    def test_primer_clear_binding_sites(self):
+        """clear_binding_sites removes BindingSite from extras"""
+        data = {
+            "name": "FWD",
+            "sequence": "ATCG",
+            "BindingSite": {"location": "1-20"},
+        }
+        primer = SgffPrimer.from_dict(data)
+        primer.clear_binding_sites()
+        assert "BindingSite" not in primer.extras
+        assert "BindingSite" not in primer.to_dict()
+
+    def test_primer_list_wrapper_extras(self):
+        """Wrapper-level extras (HybridizationParams, nextValidID) preserved"""
+        blocks = {
+            5: [
+                {
+                    "Primers": {
+                        "HybridizationParams": {"minContinuous": "10"},
+                        "nextValidID": "3",
+                        "Primer": [{"name": "P1", "sequence": "ATCG"}],
+                    }
+                }
+            ]
+        }
+        pl = SgffPrimerList(blocks)
+        assert len(pl) == 1
+        assert pl._wrapper_extras["HybridizationParams"]["minContinuous"] == "10"
+        assert pl._wrapper_extras["nextValidID"] == "3"
+
+        # Sync and verify wrapper extras are preserved in block
+        pl.add(SgffPrimer(name="P2", sequence="GGGG"))
+        block_data = blocks[5][0]["Primers"]
+        assert block_data["HybridizationParams"]["minContinuous"] == "10"
+        assert block_data["nextValidID"] == "3"
+
+
+class TestSgffAlignmentExtras:
+    def test_alignment_extras_preserved(self):
+        """Unknown attrs survive roundtrip via to_dict()"""
+        data = {
+            "name": "Ref",
+            "sequence": "ATCG",
+            "ID": "1",
+            "sortOrder": "0",
+            "trimmedRange": "5-100",
+            "isTrace": "0",
+        }
+        alignment = SgffAlignment.from_dict(data)
+        assert alignment.name == "Ref"
+        assert alignment.extras["ID"] == "1"
+        assert alignment.extras["sortOrder"] == "0"
+        assert alignment.extras["trimmedRange"] == "5-100"
+
+        result = alignment.to_dict()
+        assert result["name"] == "Ref"
+        assert result["ID"] == "1"
+        assert result["trimmedRange"] == "5-100"
+
+    def test_alignment_list_wrapper_extras(self):
+        """Wrapper-level extras (trimStringency) preserved"""
+        blocks = {
+            17: [
+                {
+                    "AlignableSequences": {
+                        "trimStringency": "0.05",
+                        "Sequence": [{"name": "Ref", "sequence": "ATCG"}],
+                    }
+                }
+            ]
+        }
+        al = SgffAlignmentList(blocks)
+        assert len(al) == 1
+        assert al._wrapper_extras["trimStringency"] == "0.05"
+
+        # Sync and verify wrapper extras are preserved
+        al.add(SgffAlignment(name="New", sequence="GGGG"))
+        block_data = blocks[17][0]["AlignableSequences"]
+        assert block_data["trimStringency"] == "0.05"
