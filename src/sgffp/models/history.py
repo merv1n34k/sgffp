@@ -75,6 +75,9 @@ class SgffHistoryOligo:
         return result
 
 
+_INPUT_SUMMARY_FIXED_KEYS = frozenset({"manipulation", "val1", "val2"})
+
+
 @dataclass
 class SgffInputSummary:
     """Describes range/selection for an operation"""
@@ -83,6 +86,7 @@ class SgffInputSummary:
     val1: int  # start position
     val2: int  # end position
     enzymes: List[tuple] = field(default_factory=list)  # [(name, site_count), ...]
+    extras: Dict = field(default_factory=dict, repr=False)
 
     @property
     def enzyme_names(self) -> List[str]:
@@ -95,30 +99,43 @@ class SgffInputSummary:
             return cls(manipulation="", val1=0, val2=0)
         # Parse enzyme pairs (name1/siteCount1, name2/siteCount2, ...)
         enzymes = []
+        consumed_keys = set(_INPUT_SUMMARY_FIXED_KEYS)
         i = 1
         while f"name{i}" in data:
             name = data[f"name{i}"]
             site_count = int(data.get(f"siteCount{i}", 0))
             enzymes.append((name, site_count))
+            consumed_keys.add(f"name{i}")
+            consumed_keys.add(f"siteCount{i}")
             i += 1
+
+        extras = {k: v for k, v in data.items() if k not in consumed_keys}
 
         return cls(
             manipulation=data.get("manipulation", ""),
             val1=int(data.get("val1", 0)),
             val2=int(data.get("val2", 0)),
             enzymes=enzymes,
+            extras=extras,
         )
 
     def to_dict(self) -> Dict:
-        result = {
-            "manipulation": self.manipulation,
-            "val1": str(self.val1),
-            "val2": str(self.val2),
-        }
+        result = dict(self.extras)
+        result["manipulation"] = self.manipulation
+        result["val1"] = str(self.val1)
+        result["val2"] = str(self.val2)
         for i, (name, site_count) in enumerate(self.enzymes, start=1):
             result[f"name{i}"] = name
             result[f"siteCount{i}"] = str(site_count)
         return result
+
+
+_TREE_NODE_KNOWN_KEYS = frozenset({
+    "ID", "name", "type", "seqLen", "strandedness", "circular",
+    "operation", "upstreamModification", "downstreamModification",
+    "resurrectable", "Oligo", "Parameter", "InputSummary",
+    "Primers", "HistoryColors", "Features", "Node",
+})
 
 
 @dataclass
@@ -153,8 +170,8 @@ class SgffHistoryTreeNode:
     children: List["SgffHistoryTreeNode"] = field(default_factory=list, repr=False)
     parent: Optional["SgffHistoryTreeNode"] = field(default=None, repr=False)
 
-    # Raw parsed dict for lossless roundtrip
-    _raw: Dict = field(default_factory=dict, repr=False)
+    # Unmodeled attributes
+    extras: Dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(
@@ -197,6 +214,9 @@ class SgffHistoryTreeNode:
                 feat_list = [feat_list]
             features = feat_list
 
+        # Extras: everything not in known keys
+        extras = {k: v for k, v in data.items() if k not in _TREE_NODE_KNOWN_KEYS}
+
         node = cls(
             id=int(data.get("ID", 0)),
             name=data.get("name", ""),
@@ -215,7 +235,7 @@ class SgffHistoryTreeNode:
             history_colors=data.get("HistoryColors"),
             features=features,
             parent=parent,
-            _raw=data,
+            extras=extras,
         )
 
         # Parse child nodes recursively
@@ -230,14 +250,10 @@ class SgffHistoryTreeNode:
         return node
 
     def to_dict(self) -> Dict:
-        """Serialize to dict, preserving unknown fields from raw data."""
-        # Start from raw data to preserve fields the model doesn't capture
-        result: Dict[str, Any] = dict(self._raw) if self._raw else {}
+        """Serialize to dict, building forward from extras + named fields."""
+        result: Dict[str, Any] = dict(self.extras)
 
-        # Remove child nodes from raw (we serialize them separately)
-        result.pop("Node", None)
-
-        # Override modeled fields
+        # Named fields
         result["name"] = self.name
         result["type"] = self.type
         result["seqLen"] = str(self.seq_len)
@@ -246,9 +262,9 @@ class SgffHistoryTreeNode:
         result["circular"] = "1" if self.circular else "0"
         result["operation"] = self.operation
 
-        if "upstreamModification" in self._raw or self.upstream_modification != "Unmodified":
+        if self.upstream_modification != "Unmodified":
             result["upstreamModification"] = self.upstream_modification
-        if "downstreamModification" in self._raw or self.downstream_modification != "Unmodified":
+        if self.downstream_modification != "Unmodified":
             result["downstreamModification"] = self.downstream_modification
 
         if self.resurrectable:

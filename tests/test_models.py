@@ -1068,3 +1068,101 @@ class TestSgffAlignmentExtras:
         al.add(SgffAlignment(name="New", sequence="GGGG"))
         block_data = blocks[17][0]["AlignableSequences"]
         assert block_data["trimStringency"] == "0.05"
+
+
+class TestSgffHistoryTreeNodeExtras:
+    def test_tree_node_extras_preserved(self):
+        """Unmodeled keys land in extras and survive roundtrip"""
+        data = {
+            "ID": "3",
+            "name": "test.dna",
+            "type": "DNA",
+            "seqLen": "500",
+            "strandedness": "double",
+            "circular": "0",
+            "operation": "makeDna",
+            "upstreamModification": "Unmodified",
+            "downstreamModification": "Unmodified",
+            "hideHistory": "1",
+            "customMapLabel": "My Label",
+            "useCustomMapLabel": "1",
+            "upstreamStickiness": "AATT",
+            "downstreamStickiness": "TTAA",
+            "RegeneratedSite": {"name": "BamHI"},
+        }
+        node = SgffHistoryTreeNode.from_dict(data)
+        assert node.extras["hideHistory"] == "1"
+        assert node.extras["customMapLabel"] == "My Label"
+        assert node.extras["RegeneratedSite"]["name"] == "BamHI"
+
+        result = node.to_dict()
+        assert result["hideHistory"] == "1"
+        assert result["customMapLabel"] == "My Label"
+        assert result["upstreamStickiness"] == "AATT"
+        assert result["RegeneratedSite"]["name"] == "BamHI"
+        # Modeled fields still correct
+        assert result["ID"] == "3"
+        assert result["name"] == "test.dna"
+
+    def test_tree_node_unmodified_omitted(self):
+        """upstreamModification/downstreamModification omitted when Unmodified"""
+        node = SgffHistoryTreeNode(
+            id=1, name="t", type="DNA", seq_len=10,
+            strandedness="double", circular=False,
+            operation="makeDna",
+            upstream_modification="Unmodified",
+            downstream_modification="Unmodified",
+        )
+        result = node.to_dict()
+        assert "upstreamModification" not in result
+        assert "downstreamModification" not in result
+
+    def test_tree_node_modification_emitted(self):
+        """Non-default modifications are emitted"""
+        node = SgffHistoryTreeNode(
+            id=1, name="t", type="DNA", seq_len=10,
+            strandedness="double", circular=False,
+            operation="makeDna",
+            upstream_modification="FivePrimePhosphorylated",
+            downstream_modification="Unmodified",
+        )
+        result = node.to_dict()
+        assert result["upstreamModification"] == "FivePrimePhosphorylated"
+        assert "downstreamModification" not in result
+
+
+class TestSgffInputSummaryExtras:
+    def test_input_summary_extras_preserved(self):
+        """Unmodeled keys (strainName, methylationChanges) survive roundtrip"""
+        data = {
+            "manipulation": "select",
+            "val1": "10",
+            "val2": "500",
+            "strainName": "DH5alpha",
+            "methylationChanges": "dam+",
+            "dam2": "1",
+        }
+        summary = SgffInputSummary.from_dict(data)
+        assert summary.extras["strainName"] == "DH5alpha"
+        assert summary.extras["methylationChanges"] == "dam+"
+        assert summary.extras["dam2"] == "1"
+
+        result = summary.to_dict()
+        assert result["manipulation"] == "select"
+        assert result["strainName"] == "DH5alpha"
+        assert result["methylationChanges"] == "dam+"
+        assert result["dam2"] == "1"
+
+    def test_input_summary_enzyme_keys_not_in_extras(self):
+        """Enzyme name/siteCount keys are consumed, not in extras"""
+        data = {
+            "manipulation": "digest",
+            "val1": "0",
+            "val2": "100",
+            "name1": "BamHI",
+            "siteCount1": "2",
+        }
+        summary = SgffInputSummary.from_dict(data)
+        assert len(summary.enzymes) == 1
+        assert "name1" not in summary.extras
+        assert "siteCount1" not in summary.extras
