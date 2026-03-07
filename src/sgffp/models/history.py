@@ -871,8 +871,8 @@ class SgffHistory(SgffModel):
         """Record a new operation by snapshotting the old root and creating a new one.
 
         1. Snapshots the current state (sequence + content) into a block 11 entry
-        2. Demotes the old root to a child (resurrectable=True)
-        3. Creates a new root with the given operation and new sequence length
+        2. Wraps the raw tree dict in a new root node (preserving original XML)
+        3. Marks the old root as resurrectable
 
         Returns the new root tree node, or None if no tree exists.
         """
@@ -885,39 +885,36 @@ class SgffHistory(SgffModel):
         snapshot = self.snapshot_current_state(blocks)
         self.add_node(snapshot)
 
-        # 2. Demote old root
-        old_root.resurrectable = True
+        # 2. Build new root by wrapping the raw block 7 dict directly.
+        #    This preserves the original XML element/attribute order for
+        #    all existing nodes — SnapGene's parser is order-sensitive.
+        raw_tree = self._get_block(7)
+        old_root_dict = raw_tree["HistoryTree"]["Node"]
 
-        # 3. Create new root
+        # Mark old root resurrectable in the raw dict
+        old_root_dict["resurrectable"] = "1"
+
         new_id = self.next_id()
-        new_root = SgffHistoryTreeNode(
-            id=new_id,
-            name=tree_kwargs.get("name", name or old_root.name),
-            type=tree_kwargs.get("type", old_root.type),
-            seq_len=len(new_sequence),
-            strandedness=tree_kwargs.get("strandedness", old_root.strandedness),
-            circular=tree_kwargs.get("circular", old_root.circular),
-            operation=operation,
-            upstream_modification=tree_kwargs.get(
-                "upstream_modification", "Unmodified"
-            ),
-            downstream_modification=tree_kwargs.get(
-                "downstream_modification", "Unmodified"
-            ),
-            children=[old_root],
-        )
-        old_root.parent = new_root
+        new_root_dict = {
+            "name": tree_kwargs.get("name", name or old_root.name),
+            "type": tree_kwargs.get("type", old_root.type),
+            "seqLen": str(len(new_sequence)),
+            "strandedness": tree_kwargs.get("strandedness", old_root.strandedness),
+            "ID": str(new_id),
+            "circular": "1" if tree_kwargs.get("circular", old_root.circular) else "0",
+            "operation": operation,
+            "Node": old_root_dict,
+        }
 
-        # 4. Update tree
-        self.tree._root = new_root
-        self.tree._nodes_by_id = {}
-        self.tree._index_nodes(new_root)
+        # Write directly to block storage (no to_dict re-serialization)
+        self._set_block(7, {"HistoryTree": {"Node": new_root_dict}})
+
+        # 3. Rebuild the in-memory tree from the updated raw dict
+        self._tree = None
         self._linked = False
-        self._link_tree_and_nodes()
-        self._sync_tree()
-        self._sync_nodes()
+        _ = self.tree  # triggers re-parse + re-link
 
-        return new_root
+        return self.tree.root
 
     # -------------------------------------------------------------------------
     # Sequence Update (simple — no history recording)
@@ -926,14 +923,19 @@ class SgffHistory(SgffModel):
     def update_for_new_sequence(self, new_sequence: str) -> None:
         """Update history tree to reflect a modified sequence.
 
-        Updates the root node's seqLen to match the new sequence length.
-        The existing history tree structure is preserved unchanged.
+        Updates the root node's seqLen in the raw block dict to preserve
+        original XML structure (SnapGene's parser is order-sensitive).
         """
         if not self.tree or not self.tree.root:
             return
 
+        # Update in-memory model
         self.tree.root.seq_len = len(new_sequence)
-        self._sync_tree()
+
+        # Update raw block dict directly (avoid to_dict re-serialization)
+        raw_tree = self._get_block(7)
+        if raw_tree:
+            raw_tree["HistoryTree"]["Node"]["seqLen"] = str(len(new_sequence))
 
     # -------------------------------------------------------------------------
     # Clear
