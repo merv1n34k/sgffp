@@ -801,7 +801,9 @@ class SgffHistory(SgffModel):
 
         Captures the main sequence and content blocks (5, 6, 8, 10) to
         produce an SgffHistoryNode suitable for storing in block 11.
-        The caller sets the node's index to match the tree node it represents.
+
+        DNA sequences (block 0) are stored as compressed DNA (seq_type=1)
+        to match SnapGene's expected format for history snapshots.
         """
         from .sequence import SgffSequence
 
@@ -811,14 +813,14 @@ class SgffHistory(SgffModel):
         # Build node dict from main sequence
         node_dict: Dict[str, Any] = {
             "sequence": seq_model.value,
-            "sequence_type": block_id if block_id is not None else 0,
         }
 
         if seq_model.length:
             node_dict["length"] = seq_model.length
 
-        # For compressed DNA (block 1), carry forward metadata
         if block_id == 1:
+            # Already compressed DNA — carry forward metadata
+            node_dict["sequence_type"] = 1
             raw = blocks.get(1, [{}])[0]
             node_dict["format_version"] = raw.get("format_version", 30)
             node_dict["strandedness_flag"] = raw.get("strandedness_flag", 1)
@@ -826,6 +828,18 @@ class SgffHistory(SgffModel):
             node_dict["header_seq_length"] = raw.get(
                 "header_seq_length", seq_model.length
             )
+        elif block_id == 0:
+            # Uncompressed DNA → convert to compressed (seq_type=1)
+            # SnapGene expects history snapshots in compressed format
+            node_dict["sequence_type"] = 1
+            strandedness_flag = 1 if seq_model.strandedness == "double" else 0
+            node_dict["format_version"] = 30
+            node_dict["strandedness_flag"] = strandedness_flag
+            node_dict["property_flags"] = 1
+            node_dict["header_seq_length"] = min(seq_model.length, 65535)
+        else:
+            # Protein (21) or RNA (32) — keep as-is
+            node_dict["sequence_type"] = block_id if block_id is not None else 0
 
         # Collect content blocks
         content_blocks: Dict[int, List] = {}

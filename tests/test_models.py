@@ -1280,7 +1280,8 @@ class TestSgffHistorySnapshot:
 
         assert node.index == 1
         assert node.sequence == "ATCGATCG"
-        assert node.sequence_type == 0
+        # Block 0 DNA is stored as compressed DNA (seq_type=1) in snapshots
+        assert node.sequence_type == 1
         assert node.content is not None
         assert node.content.has_features
 
