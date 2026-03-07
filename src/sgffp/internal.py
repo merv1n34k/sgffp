@@ -272,6 +272,30 @@ class SgffObject:
         self.features.add(feature)
         return self
 
+    def set_sequence(
+        self,
+        new_sequence: str,
+        operation: str = "replace",
+        record_history: bool = True,
+    ) -> "SgffObject":
+        """Set a new sequence, optionally recording the change in history.
+
+        Unlike the sequence.value setter, this method can create a proper
+        history entry (block 11 snapshot + new tree root) so SnapGene
+        correctly tracks the modification.
+
+        Returns self for chaining.
+        """
+        if record_history and self.has_history:
+            self.history.record_operation(
+                self.blocks,
+                new_sequence,
+                operation,
+                name=self.history.tree.root.name if self.history.tree and self.history.tree.root else "",
+            )
+        self.sequence.value = new_sequence
+        return self
+
     def add_primer(
         self,
         name: str,

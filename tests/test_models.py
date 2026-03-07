@@ -1421,3 +1421,34 @@ class TestSgffHistoryRecordOperation:
         history = SgffHistory(blocks)
         result = history.record_operation(blocks, "ATCGGG", "replace")
         assert result is None
+
+
+class TestSgffObjectSetSequence:
+    def test_set_sequence_records_history(self):
+        """set_sequence creates a new history tree node"""
+        from sgffp.internal import SgffObject, Cookie
+
+        blocks = {
+            0: [{"sequence": "ATCGATCG", "topology": "linear", "strandedness": "double"}],
+            7: [{"HistoryTree": {"Node": {
+                "ID": "1", "name": "test.dna", "type": "DNA",
+                "seqLen": "8", "strandedness": "double",
+                "circular": "0", "operation": "invalid",
+            }}}],
+        }
+        sgff = SgffObject(cookie=Cookie(), blocks=blocks)
+        old_tree_count = len(sgff.history.tree)
+
+        sgff.set_sequence("ATCGATCGGG", operation="insertFragment")
+
+        assert len(sgff.history.tree) == old_tree_count + 1
+        assert sgff.sequence.value == "ATCGATCGGG"
+        assert sgff.history.tree.root.seq_len == 10
+
+    def test_set_sequence_no_history(self):
+        """set_sequence works when no history exists"""
+        from sgffp.internal import SgffObject
+
+        sgff = SgffObject.new("ATCG")
+        sgff.set_sequence("GGGG")
+        assert sgff.sequence.value == "GGGG"
