@@ -430,22 +430,15 @@ class TestSgffWriterFeatures:
 
 class TestSgffWriterRealFiles:
     def test_write_read_test_dna(self, test_dna):
-        """Read test.dna, write, read again (supported blocks only)"""
+        """Read test.dna, write, read again — full file including history"""
         original = SgffReader.from_file(test_dna)
-
-        # Filter out blocks that can't be round-tripped (history nodes, etc.)
-        skip_blocks = {7, 11, 29, 30}
-        filtered = SgffObject(cookie=original.cookie)
-        for block_type, items in original.blocks.items():
-            if block_type not in skip_blocks:
-                filtered.blocks[block_type] = items
-
-        data = SgffWriter.to_bytes(filtered)
+        data = SgffWriter.to_bytes(original)
 
         # Should be valid SnapGene format
         assert data[:1] == b"\t"
         assert data[5:13] == b"SnapGene"
 
-        # Should be readable
+        # Should be readable with all blocks preserved
         restored = SgffReader.from_bytes(data)
         assert restored is not None
+        assert set(original.blocks.keys()) == set(restored.blocks.keys())

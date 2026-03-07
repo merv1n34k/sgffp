@@ -1,9 +1,8 @@
 """
 End-to-end roundtrip tests: read → write → read
 
-Note: Some block types (11 - history nodes, 7/29/30 - compressed history)
-are not fully round-trippable due to complex nested structures.
-Tests focus on block types that the writer supports.
+Blocks 7 (history tree) and 11 (history nodes) are fully round-trippable.
+Block 18 (ZTR trace) requires special handling and is tested separately.
 """
 
 import pytest
@@ -13,13 +12,12 @@ from sgffp.writer import SgffWriter
 from sgffp.internal import SgffObject
 
 # Block types that are fully round-trippable
-ROUNDTRIP_BLOCKS = {0, 1, 5, 6, 8, 10, 17, 21, 32}
+ROUNDTRIP_BLOCKS = {0, 1, 5, 6, 7, 8, 10, 11, 17, 21, 32}
 
 # Block types with complex structures that may not round-trip
-# 7, 29, 30 = LZMA compressed history
-# 11 = history node with nested blocks
 # 18 = ZTR trace format (complex binary)
-SKIP_BLOCKS = {7, 11, 18, 29, 30}
+# 29, 30 = LZMA history blocks (tested synthetically below)
+SKIP_BLOCKS = {18, 29, 30}
 
 
 def filter_roundtrippable_blocks(sgff):
@@ -443,3 +441,61 @@ class TestRoundtripExtrasPreserved:
         assert rest_feature.qualifiers["codon_start"] == 1
         assert isinstance(rest_feature.qualifiers["codon_start"], int)
         assert rest_feature.qualifiers["note"] == "test gene"
+
+
+# =============================================================================
+# History Roundtrip Tests
+# =============================================================================
+
+
+class TestHistoryRoundtrip:
+    def test_history_tree_roundtrip(self, test_dna):
+        """Block 7 (history tree) survives full-file roundtrip"""
+        original = SgffReader.from_file(test_dna)
+        assert 7 in original.blocks
+
+        written = SgffWriter.to_bytes(original)
+        restored = SgffReader.from_bytes(written)
+
+        assert 7 in restored.blocks
+        assert original.blocks[7] == restored.blocks[7]
+
+    def test_history_nodes_roundtrip(self, test_dna):
+        """Block 11 (history nodes) survives full-file roundtrip"""
+        original = SgffReader.from_file(test_dna)
+        assert 11 in original.blocks
+
+        written = SgffWriter.to_bytes(original)
+        restored = SgffReader.from_bytes(written)
+
+        assert 11 in restored.blocks
+        assert original.blocks[11] == restored.blocks[11]
+
+    def test_history_complex_roundtrip(self):
+        """pIB2 file (9 tree nodes, 7 history nodes) roundtrips correctly"""
+        from pathlib import Path
+
+        pib2 = Path("data/samples/pIB2-SEC13-mEGFP.dna")
+        if not pib2.exists():
+            pytest.skip("pIB2 sample file not available")
+
+        original = SgffReader.from_file(pib2)
+        assert len(original.history.tree) == 9
+        assert len(original.history.nodes) == 7
+
+        written = SgffWriter.to_bytes(original)
+        restored = SgffReader.from_bytes(written)
+
+        assert len(restored.history.tree) == 9
+        assert len(restored.history.nodes) == 7
+        assert original.blocks[7] == restored.blocks[7]
+        assert original.blocks[11] == restored.blocks[11]
+
+    def test_history_roundtrip_stability(self, test_dna):
+        """History output stable after 2nd roundtrip"""
+        original = SgffReader.from_file(test_dna)
+        written1 = SgffWriter.to_bytes(original)
+        restored1 = SgffReader.from_bytes(written1)
+        written2 = SgffWriter.to_bytes(restored1)
+
+        assert written1 == written2
