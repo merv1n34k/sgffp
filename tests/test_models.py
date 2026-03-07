@@ -1261,3 +1261,89 @@ class TestSgffFeatureListExtras:
         fl.add(SgffFeature(name="B", type="CDS"))
         block_data = blocks[10][0]
         assert block_data["wrapper_extras"]["nextValidID"] == "10"
+
+
+class TestSgffHistorySnapshot:
+    def test_snapshot_creates_node(self):
+        """Blocks with seq + features → correct snapshot node"""
+        blocks = {
+            0: [{"sequence": "ATCGATCG", "topology": "linear", "strandedness": "double"}],
+            7: [{"HistoryTree": {"Node": {
+                "ID": "1", "name": "test.dna", "type": "DNA",
+                "seqLen": "8", "strandedness": "double",
+                "circular": "0", "operation": "invalid",
+            }}}],
+            10: [{"features": [{"name": "GFP", "type": "CDS", "segments": []}]}],
+        }
+        history = SgffHistory(blocks)
+        node = history.snapshot_current_state(blocks)
+
+        assert node.index == 1
+        assert node.sequence == "ATCGATCG"
+        assert node.sequence_type == 0
+        assert node.content is not None
+        assert node.content.has_features
+
+    def test_snapshot_compressed_dna(self):
+        """Compressed DNA metadata preserved in snapshot"""
+        blocks = {
+            1: [{
+                "sequence": "GATCGATC",
+                "length": 8,
+                "format_version": 30,
+                "strandedness_flag": 1,
+                "property_flags": 3,
+                "header_seq_length": 8,
+            }],
+            7: [{"HistoryTree": {"Node": {
+                "ID": "5", "name": "comp.dna", "type": "DNA",
+                "seqLen": "8", "strandedness": "double",
+                "circular": "0", "operation": "invalid",
+            }}}],
+        }
+        history = SgffHistory(blocks)
+        node = history.snapshot_current_state(blocks)
+
+        assert node.sequence_type == 1
+        assert node.format_version == 30
+        assert node.property_flags == 3
+        assert node.header_seq_length == 8
+        assert node.index == 5
+
+    def test_snapshot_empty_content(self):
+        """Only sequence, no content blocks"""
+        blocks = {
+            0: [{"sequence": "ATCG", "topology": "linear", "strandedness": "single"}],
+            7: [{"HistoryTree": {"Node": {
+                "ID": "1", "name": "t", "type": "DNA",
+                "seqLen": "4", "strandedness": "single",
+                "circular": "0", "operation": "invalid",
+            }}}],
+        }
+        history = SgffHistory(blocks)
+        node = history.snapshot_current_state(blocks)
+
+        assert node.sequence == "ATCG"
+        assert node.content is None or not node.content.exists
+
+    def test_next_id_with_tree(self):
+        """next_id returns max(IDs) + 1"""
+        blocks = {
+            7: [{"HistoryTree": {"Node": {
+                "ID": "3", "name": "root", "type": "DNA",
+                "seqLen": "10", "strandedness": "double",
+                "circular": "0", "operation": "invalid",
+                "Node": {
+                    "ID": "1", "name": "child", "type": "DNA",
+                    "seqLen": "5", "strandedness": "double",
+                    "circular": "0", "operation": "invalid",
+                },
+            }}}],
+        }
+        history = SgffHistory(blocks)
+        assert history.next_id() == 4
+
+    def test_next_id_no_tree(self):
+        """next_id returns 1 when no tree exists"""
+        history = SgffHistory({})
+        assert history.next_id() == 1

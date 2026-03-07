@@ -787,6 +787,62 @@ class SgffHistory(SgffModel):
             self._remove_block(29)
 
     # -------------------------------------------------------------------------
+    # Snapshot & ID helpers
+    # -------------------------------------------------------------------------
+
+    def next_id(self) -> int:
+        """Return the next available tree node ID."""
+        if self.tree and self.tree.nodes:
+            return max(self.tree.nodes.keys()) + 1
+        return 1
+
+    def snapshot_current_state(self, blocks: Dict) -> SgffHistoryNode:
+        """Create a history node snapshot from the current main blocks.
+
+        Captures the main sequence and content blocks (5, 6, 8, 10) to
+        produce an SgffHistoryNode suitable for storing in block 11.
+        The caller sets the node's index to match the tree node it represents.
+        """
+        from .sequence import SgffSequence
+
+        seq_model = SgffSequence(blocks)
+        block_id = seq_model.block_id
+
+        # Build node dict from main sequence
+        node_dict: Dict[str, Any] = {
+            "sequence": seq_model.value,
+            "sequence_type": block_id if block_id is not None else 0,
+        }
+
+        if seq_model.length:
+            node_dict["length"] = seq_model.length
+
+        # For compressed DNA (block 1), carry forward metadata
+        if block_id == 1:
+            raw = blocks.get(1, [{}])[0]
+            node_dict["format_version"] = raw.get("format_version", 30)
+            node_dict["strandedness_flag"] = raw.get("strandedness_flag", 1)
+            node_dict["property_flags"] = raw.get("property_flags", 1)
+            node_dict["header_seq_length"] = raw.get(
+                "header_seq_length", seq_model.length
+            )
+
+        # Collect content blocks
+        content_blocks: Dict[int, List] = {}
+        for bid in (5, 6, 8, 10):
+            if bid in blocks:
+                content_blocks[bid] = blocks[bid]
+
+        if content_blocks:
+            node_dict["node_info"] = content_blocks
+
+        # Set index to current root's tree node ID
+        root = self.tree.root if self.tree else None
+        node_dict["node_index"] = root.id if root else 0
+
+        return SgffHistoryNode.from_dict(node_dict)
+
+    # -------------------------------------------------------------------------
     # Sequence Update
     # -------------------------------------------------------------------------
 
