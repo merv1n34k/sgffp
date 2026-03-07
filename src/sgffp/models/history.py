@@ -843,7 +843,70 @@ class SgffHistory(SgffModel):
         return SgffHistoryNode.from_dict(node_dict)
 
     # -------------------------------------------------------------------------
-    # Sequence Update
+    # Tree modification
+    # -------------------------------------------------------------------------
+
+    def record_operation(
+        self,
+        blocks: Dict,
+        new_sequence: str,
+        operation: str,
+        name: str = "",
+        **tree_kwargs,
+    ) -> Optional[SgffHistoryTreeNode]:
+        """Record a new operation by snapshotting the old root and creating a new one.
+
+        1. Snapshots the current state (sequence + content) into a block 11 entry
+        2. Demotes the old root to a child (resurrectable=True)
+        3. Creates a new root with the given operation and new sequence length
+
+        Returns the new root tree node, or None if no tree exists.
+        """
+        if not self.tree or not self.tree.root:
+            return None
+
+        old_root = self.tree.root
+
+        # 1. Snapshot current state into block 11
+        snapshot = self.snapshot_current_state(blocks)
+        self.add_node(snapshot)
+
+        # 2. Demote old root
+        old_root.resurrectable = True
+
+        # 3. Create new root
+        new_id = self.next_id()
+        new_root = SgffHistoryTreeNode(
+            id=new_id,
+            name=tree_kwargs.get("name", name or old_root.name),
+            type=tree_kwargs.get("type", old_root.type),
+            seq_len=len(new_sequence),
+            strandedness=tree_kwargs.get("strandedness", old_root.strandedness),
+            circular=tree_kwargs.get("circular", old_root.circular),
+            operation=operation,
+            upstream_modification=tree_kwargs.get(
+                "upstream_modification", "Unmodified"
+            ),
+            downstream_modification=tree_kwargs.get(
+                "downstream_modification", "Unmodified"
+            ),
+            children=[old_root],
+        )
+        old_root.parent = new_root
+
+        # 4. Update tree
+        self.tree._root = new_root
+        self.tree._nodes_by_id = {}
+        self.tree._index_nodes(new_root)
+        self._linked = False
+        self._link_tree_and_nodes()
+        self._sync_tree()
+        self._sync_nodes()
+
+        return new_root
+
+    # -------------------------------------------------------------------------
+    # Sequence Update (simple — no history recording)
     # -------------------------------------------------------------------------
 
     def update_for_new_sequence(self, new_sequence: str) -> None:

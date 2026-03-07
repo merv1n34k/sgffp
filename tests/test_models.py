@@ -1347,3 +1347,77 @@ class TestSgffHistorySnapshot:
         """next_id returns 1 when no tree exists"""
         history = SgffHistory({})
         assert history.next_id() == 1
+
+
+class TestSgffHistoryRecordOperation:
+    def _make_blocks(self, seq="ATCGATCG"):
+        """Helper to create blocks with sequence, tree, and features."""
+        return {
+            0: [{"sequence": seq, "topology": "circular", "strandedness": "double"}],
+            7: [{"HistoryTree": {"Node": {
+                "ID": "1", "name": "test.dna", "type": "DNA",
+                "seqLen": str(len(seq)), "strandedness": "double",
+                "circular": "1", "operation": "invalid",
+            }}}],
+            10: [{"features": [{"name": "GFP", "type": "CDS", "segments": []}]}],
+        }
+
+    def test_record_operation_basic(self):
+        """New root, old root demoted, block 11 created"""
+        blocks = self._make_blocks()
+        history = SgffHistory(blocks)
+
+        assert len(history.tree) == 1
+        assert len(history.nodes) == 0
+
+        new_root = history.record_operation(
+            blocks, "ATCGATCGGG", "insertFragment"
+        )
+
+        assert new_root is not None
+        assert new_root.id == 2
+        assert new_root.seq_len == 10
+        assert new_root.operation == "insertFragment"
+        assert new_root.circular is True
+        assert len(new_root.children) == 1
+        assert new_root.children[0].id == 1
+        assert new_root.children[0].resurrectable is True
+        assert len(history.tree) == 2
+        assert len(history.nodes) == 1
+        assert history.nodes[1].sequence == "ATCGATCG"
+
+    def test_record_operation_preserves_content(self):
+        """Snapshot captures features from content blocks"""
+        blocks = self._make_blocks()
+        history = SgffHistory(blocks)
+        history.record_operation(blocks, "NEWSEQ", "replace")
+
+        snapshot = history.nodes[1]
+        assert snapshot.content is not None
+        assert snapshot.content.has_features
+
+    def test_record_operation_roundtrip(self):
+        """write → read → verify full structure"""
+        from sgffp.reader import SgffReader
+        from sgffp.writer import SgffWriter
+        from sgffp.internal import SgffObject, Cookie
+
+        blocks = self._make_blocks("ATCGATCGATCG")
+        sgff = SgffObject(cookie=Cookie(), blocks=blocks)
+
+        sgff.history.record_operation(blocks, "ATCGATCGATCGAAA", "insertFragment")
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert len(restored.history.tree) == 2
+        assert len(restored.history.nodes) == 1
+        assert restored.history.tree.root.seq_len == 15
+        assert restored.history.tree.root.operation == "insertFragment"
+
+    def test_record_operation_no_tree(self):
+        """Graceful no-op when no history exists"""
+        blocks = {0: [{"sequence": "ATCG"}]}
+        history = SgffHistory(blocks)
+        result = history.record_operation(blocks, "ATCGGG", "replace")
+        assert result is None
