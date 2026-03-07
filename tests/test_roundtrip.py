@@ -15,9 +15,8 @@ from sgffp.internal import SgffObject
 ROUNDTRIP_BLOCKS = {0, 1, 5, 6, 7, 8, 10, 11, 17, 21, 32}
 
 # Block types with complex structures that may not round-trip
-# 18 = ZTR trace format (complex binary)
-# 29, 30 = LZMA history blocks (tested synthetically below)
-SKIP_BLOCKS = {18, 29, 30}
+# 18 = ZTR trace format (complex binary, tested separately)
+SKIP_BLOCKS = {18}
 
 
 def filter_roundtrippable_blocks(sgff):
@@ -499,3 +498,41 @@ class TestHistoryRoundtrip:
         written2 = SgffWriter.to_bytes(restored1)
 
         assert written1 == written2
+
+    def test_block_29_synthetic_roundtrip(self):
+        """Block 29 (LZMA XML modifier) roundtrips via synthetic data"""
+        modifier = {
+            "HistoryModifier": {
+                "Node": {
+                    "ID": "1",
+                    "name": "test.dna",
+                    "type": "DNA",
+                    "seqLen": "100",
+                }
+            }
+        }
+        sgff = SgffObject.new("ATCGATCG")
+        sgff.blocks[29] = [modifier]
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert 29 in restored.blocks
+        assert restored.blocks[29][0] == modifier
+
+    def test_block_30_synthetic_roundtrip(self):
+        """Block 30 (LZMA nested TLV) roundtrips via synthetic data"""
+        nested = {
+            6: [{"Notes": {"Note": "snapshot note"}}],
+            8: [{"SequenceProperties": {"topology": "circular"}}],
+        }
+        sgff = SgffObject.new("ATCGATCG")
+        sgff.blocks[30] = [nested]
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert 30 in restored.blocks
+        content = restored.blocks[30][0]
+        assert 6 in content
+        assert 8 in content
