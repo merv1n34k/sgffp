@@ -347,3 +347,99 @@ class TestDeNovoRoundtrip:
         assert restored1.features[0].name == "test"
         # Output stabilizes after first parse
         assert written2 == written3
+
+
+# =============================================================================
+# _raw Removal Verification
+# =============================================================================
+
+
+class TestNoRawField:
+    def test_no_model_has_raw_field(self):
+        """No dataclass model should have _raw in its fields"""
+        import dataclasses
+        from sgffp import models
+
+        model_classes = [
+            models.SgffPrimer,
+            models.SgffAlignment,
+            models.SgffSegment,
+            models.SgffFeature,
+            models.SgffHistoryTreeNode,
+            models.SgffHistoryOligo,
+            models.SgffInputSummary,
+            models.SgffHistoryNode,
+        ]
+        for cls in model_classes:
+            if dataclasses.is_dataclass(cls):
+                field_names = {f.name for f in dataclasses.fields(cls)}
+                assert "_raw" not in field_names, (
+                    f"{cls.__name__} still has _raw field"
+                )
+
+
+class TestRoundtripExtrasPreserved:
+    def test_roundtrip_feature_extras_preserved(self):
+        """Feature extras survive write→read roundtrip"""
+        from sgffp.models import SgffFeature, SgffSegment
+
+        sgff = SgffObject.new("ATCGATCGATCGATCG")
+        feature = SgffFeature(
+            name="GFP",
+            type="CDS",
+            strand="+",
+            segments=[SgffSegment(start=0, end=8, color="#00FF00")],
+            qualifiers={"note": "test"},
+        )
+        sgff.features.add(feature)
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert len(restored.features) == 1
+        rest = restored.features[0]
+        assert rest.name == "GFP"
+        assert rest.type == "CDS"
+        assert rest.strand == "+"
+        assert rest.qualifiers["note"] == "test"
+
+    def test_roundtrip_primer_extras_preserved(self, test_dna):
+        """Primer extras survive write→read roundtrip"""
+        original = SgffReader.from_file(test_dna)
+        filtered = filter_roundtrippable_blocks(original)
+
+        if 5 not in filtered.blocks:
+            pytest.skip("No primers in test file")
+
+        written = SgffWriter.to_bytes(filtered)
+        restored = SgffReader.from_bytes(written)
+
+        orig_primers = filtered.primers
+        rest_primers = restored.primers
+
+        assert len(orig_primers) == len(rest_primers)
+        for orig, rest in zip(orig_primers, rest_primers):
+            assert orig.name == rest.name
+            assert orig.sequence == rest.sequence
+
+    def test_roundtrip_qualifier_types_preserved(self):
+        """Int qualifiers stay as ints through roundtrip"""
+        sgff = SgffObject.new("ATCGATCG")
+        from sgffp.models import SgffFeature, SgffSegment
+
+        feature = SgffFeature(
+            name="test",
+            type="CDS",
+            strand="+",
+            segments=[SgffSegment(start=0, end=8)],
+            qualifiers={"codon_start": 1, "note": "test gene"},
+        )
+        sgff.features.add(feature)
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        rest_feature = restored.features[0]
+        assert rest_feature.qualifiers["codon_start"] == 1
+        assert isinstance(rest_feature.qualifiers["codon_start"], int)
+        assert rest_feature.qualifiers["note"] == "test gene"
