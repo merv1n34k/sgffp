@@ -17,6 +17,13 @@ from .internal import SgffObject
 _UPPERCASE_ATTRS = {"ID"}
 
 
+def _qual_value_to_xml(v: object) -> dict:
+    """Convert a qualifier value to xmltodict V element format."""
+    if isinstance(v, int):
+        return {"@int": str(v)}
+    return {"@text": str(v)}
+
+
 def _to_xmltodict(obj: Any) -> Any:
     """Convert clean JSON dict back to xmltodict format.
 
@@ -213,50 +220,67 @@ class SgffWriter:
 
     def _serialize_features(self, data: Dict) -> bytes:
         """Serialize features to XML."""
-        # Use preserved raw XML when available for lossless roundtrip
-        raw = data.get("_raw")
-        if raw:
-            return self._serialize_xml(raw, xml_declaration=True)
-
         features = data.get("features", [])
         if not features:
-            return self._serialize_xml(data)
+            xml_dict = {"Features": None}
+            xml_str = xmltodict.unparse(
+                xml_dict, full_document=False, short_empty_elements=True
+            )
+            return ('<?xml version="1.0"?>' + xml_str).encode("utf-8")
 
-        # Fallback: reconstruct XML from extracted features
+        strand_rev = {".": "0", "+": "1", "-": "2", "=": "3"}
+        wrapper_extras = data.get("wrapper_extras", {})
+
         xml_features = []
         for f in features:
-            strand_rev = {".": "0", "+": "1", "-": "2", "=": "3"}
+            # Start from feature-level extras (unmodeled XML attrs)
+            xml_f = _to_xmltodict(f.get("extras", {}))
 
-            xml_f = {
-                "@name": f.get("name", ""),
-                "@type": f.get("type", ""),
-                "@directionality": strand_rev.get(f.get("strand", "."), "0"),
-            }
+            # Named feature attrs
+            xml_f["@name"] = f.get("name", "")
+            xml_f["@type"] = f.get("type", "")
+            xml_f["@directionality"] = strand_rev.get(f.get("strand", "."), "0")
 
-            # Segments - convert back to xmltodict format
+            # Segments
             if f.get("segments"):
                 xml_f["Segment"] = _to_xmltodict(f["segments"])
 
-            # Qualifiers
-            quals = f.get("qualifiers", {})
-            if quals:
-                xml_f["Q"] = [
-                    {
-                        "@name": k,
-                        "V": {"@text": str(v)}
-                        if not isinstance(v, list)
-                        else [{"@text": str(x)} for x in v],
-                    }
-                    for k, v in quals.items()
-                ]
+            # Qualifiers: prefer raw_qualifiers for lossless roundtrip
+            raw_quals = f.get("raw_qualifiers")
+            if raw_quals:
+                xml_f["Q"] = _to_xmltodict(raw_quals)
+            else:
+                quals = f.get("qualifiers", {})
+                if quals:
+                    xml_f["Q"] = self._qualifiers_to_xml(quals)
 
             xml_features.append(xml_f)
 
-        xml_dict = {"Features": {"Feature": xml_features}}
+        features_wrapper = _to_xmltodict(wrapper_extras)
+        features_wrapper["Feature"] = xml_features
+
+        xml_dict = {"Features": features_wrapper}
         xml_str = xmltodict.unparse(
             xml_dict, full_document=False, short_empty_elements=True
         )
         return ('<?xml version="1.0"?>' + xml_str).encode("utf-8")
+
+    @staticmethod
+    def _qualifiers_to_xml(quals: Dict) -> list:
+        """Convert qualifiers dict to xmltodict Q list format."""
+        result = []
+        for k, v in quals.items():
+            if isinstance(v, list):
+                result.append({
+                    "@name": k,
+                    "V": [_qual_value_to_xml(x) for x in v],
+                })
+            else:
+                result.append({
+                    "@name": k,
+                    "V": _qual_value_to_xml(v),
+                })
+        return result
 
     def _serialize_xml(
         self, data: Dict, *, xml_declaration: bool = False

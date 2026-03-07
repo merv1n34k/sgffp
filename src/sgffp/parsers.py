@@ -186,6 +186,8 @@ def parse_lzma_nested(data: bytes) -> Optional[Dict[int, List[Any]]]:
 
 STRAND_MAP = {"0": ".", "1": "+", "2": "-", "3": "="}
 
+_FEATURE_KNOWN_KEYS = frozenset({"name", "type", "directionality", "Segment", "Q"})
+
 
 def parse_features(data: bytes) -> Optional[Dict]:
     """Parse features block with qualifier extraction."""
@@ -195,9 +197,16 @@ def parse_features(data: bytes) -> Optional[Dict]:
 
     # Handle empty <Features></Features> element (xmltodict returns None)
     if raw["Features"] is None:
-        return {"features": [], "_raw": raw}
+        return {"features": [], "wrapper_extras": {}}
 
-    features_data = raw["Features"].get("Feature", [])
+    features_wrapper = raw["Features"]
+
+    # Capture wrapper-level extras (nextValidID, recycledIDs)
+    wrapper_extras = {
+        k: v for k, v in features_wrapper.items() if k != "Feature"
+    }
+
+    features_data = features_wrapper.get("Feature", [])
     if not isinstance(features_data, list):
         features_data = [features_data]
 
@@ -217,7 +226,17 @@ def parse_features(data: bytes) -> Optional[Dict]:
         # Parse qualifiers
         qualifiers = _parse_qualifiers(feature.get("Q", []))
 
+        # Preserve raw qualifier list for lossless roundtrip
+        raw_quals = feature.get("Q", [])
+        if raw_quals and not isinstance(raw_quals, list):
+            raw_quals = [raw_quals]
+
         color = segments[0].get("color", "") if segments else ""
+
+        # Feature-level extras (unmodeled XML attrs)
+        extras = {
+            k: v for k, v in feature.items() if k not in _FEATURE_KNOWN_KEYS
+        }
 
         features.append(
             {
@@ -229,10 +248,12 @@ def parse_features(data: bytes) -> Optional[Dict]:
                 "color": color,
                 "segments": segments,
                 "qualifiers": qualifiers,
+                "extras": extras,
+                "raw_qualifiers": raw_quals if raw_quals else None,
             }
         )
 
-    return {"features": features, "_raw": raw}
+    return {"features": features, "wrapper_extras": wrapper_extras}
 
 
 def _parse_qualifiers(quals: Any) -> Dict[str, Any]:

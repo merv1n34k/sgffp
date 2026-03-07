@@ -372,7 +372,8 @@ class TestParseFeatures:
         xml = b"<Features></Features>"
         result = parse_features(xml)
         assert result["features"] == []
-        assert "_raw" in result
+        assert "_raw" not in result
+        assert "wrapper_extras" in result
 
     def test_parse_features_invalid_xml(self):
         """Invalid XML returns None"""

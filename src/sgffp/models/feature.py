@@ -7,6 +7,8 @@ from typing import Dict, List, Any, Optional
 
 from .base import SgffListModel
 
+_SEGMENT_KNOWN_KEYS = frozenset({"range", "color"})
+
 
 @dataclass
 class SgffSegment:
@@ -15,19 +17,23 @@ class SgffSegment:
     start: int
     end: int
     color: Optional[str] = None
+    extras: Dict = field(default_factory=dict, repr=False)
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffSegment":
         range_str = data.get("range", "1-1")
         parts = sorted(int(x) for x in range_str.split("-"))
+        extras = {k: v for k, v in data.items() if k not in _SEGMENT_KNOWN_KEYS}
         return cls(
             start=parts[0] - 1,
             end=parts[1] if len(parts) > 1 else parts[0],
             color=data.get("color"),
+            extras=extras,
         )
 
     def to_dict(self) -> Dict:
-        result = {"range": f"{self.start + 1}-{self.end}"}
+        result = dict(self.extras)
+        result["range"] = f"{self.start + 1}-{self.end}"
         if self.color:
             result["color"] = self.color
         return result
@@ -43,6 +49,8 @@ class SgffFeature:
     segments: List[SgffSegment] = field(default_factory=list)
     qualifiers: Dict[str, Any] = field(default_factory=dict)
     color: Optional[str] = None
+    extras: Dict = field(default_factory=dict, repr=False)
+    raw_qualifiers: Optional[List] = field(default=None, repr=False)
 
     @property
     def start(self) -> int:
@@ -73,6 +81,8 @@ class SgffFeature:
             segments=segments,
             qualifiers=data.get("qualifiers", {}),
             color=data.get("color"),
+            extras=data.get("extras", {}),
+            raw_qualifiers=data.get("raw_qualifiers"),
         )
 
     def to_dict(self) -> Dict:
@@ -83,6 +93,8 @@ class SgffFeature:
             "segments": [s.to_dict() for s in self.segments],
             "qualifiers": self.qualifiers,
             "color": self.color,
+            "extras": self.extras,
+            "raw_qualifiers": self.raw_qualifiers,
         }
 
 
@@ -91,17 +103,31 @@ class SgffFeatureList(SgffListModel[SgffFeature]):
 
     BLOCK_IDS = (10,)
 
+    def __init__(self, blocks, **kwargs):
+        super().__init__(blocks, **kwargs)
+        self._wrapper_extras: Dict = {}
+
     def _load(self) -> List[SgffFeature]:
         data = self._get_block(10)
         if not data:
             return []
+
+        # Capture wrapper-level extras (nextValidID, recycledIDs)
+        self._wrapper_extras = data.get("wrapper_extras", {})
+
         return [SgffFeature.from_dict(f) for f in data.get("features", [])]
 
     def _sync(self) -> None:
         if self._items is None:
             return
         if self._items:
-            self._set_block(10, {"features": [f.to_dict() for f in self._items]})
+            self._set_block(
+                10,
+                {
+                    "features": [f.to_dict() for f in self._items],
+                    "wrapper_extras": self._wrapper_extras,
+                },
+            )
         else:
             self._remove_block(10)
 

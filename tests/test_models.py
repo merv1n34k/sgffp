@@ -1166,3 +1166,98 @@ class TestSgffInputSummaryExtras:
         assert len(summary.enzymes) == 1
         assert "name1" not in summary.extras
         assert "siteCount1" not in summary.extras
+
+
+class TestSgffFeatureExtras:
+    def test_feature_extras_preserved(self):
+        """Unmodeled feature attrs survive roundtrip"""
+        data = {
+            "name": "GFP",
+            "type": "CDS",
+            "strand": "+",
+            "segments": [{"range": "1-100", "color": "#00FF00"}],
+            "qualifiers": {"note": "test"},
+            "color": "#00FF00",
+            "extras": {
+                "recentID": "5",
+                "readingFrame": "1",
+                "translationMW": "26800",
+                "hitsStopCodon": "1",
+            },
+        }
+        feature = SgffFeature.from_dict(data)
+        assert feature.extras["recentID"] == "5"
+        assert feature.extras["readingFrame"] == "1"
+
+        result = feature.to_dict()
+        assert result["extras"]["recentID"] == "5"
+        assert result["extras"]["translationMW"] == "26800"
+
+    def test_feature_raw_qualifiers_preserved(self):
+        """raw_qualifiers survive roundtrip"""
+        raw_quals = [
+            {"name": "note", "V": {"text": "A note"}},
+            {"name": "product", "V": {"text": "GFP"}},
+        ]
+        data = {
+            "name": "GFP",
+            "type": "CDS",
+            "segments": [],
+            "qualifiers": {"note": "A note", "product": "GFP"},
+            "raw_qualifiers": raw_quals,
+        }
+        feature = SgffFeature.from_dict(data)
+        assert feature.raw_qualifiers is not None
+        assert len(feature.raw_qualifiers) == 2
+
+        result = feature.to_dict()
+        assert result["raw_qualifiers"] == raw_quals
+
+
+class TestSgffSegmentExtras:
+    def test_segment_extras_preserved(self):
+        """Unmodeled segment attrs survive roundtrip"""
+        data = {
+            "range": "1-100",
+            "color": "#FF0000",
+            "type": "standard",
+            "name": "Seg1",
+            "translated": "1",
+        }
+        segment = SgffSegment.from_dict(data)
+        assert segment.extras["type"] == "standard"
+        assert segment.extras["name"] == "Seg1"
+        assert segment.extras["translated"] == "1"
+
+        result = segment.to_dict()
+        assert result["type"] == "standard"
+        assert result["name"] == "Seg1"
+        assert result["range"] == "1-100"
+        assert result["color"] == "#FF0000"
+
+
+class TestSgffFeatureListExtras:
+    def test_wrapper_extras_preserved(self):
+        """Wrapper-level extras (nextValidID, recycledIDs) preserved"""
+        blocks = {
+            10: [
+                {
+                    "features": [
+                        {"name": "A", "type": "gene", "segments": []},
+                    ],
+                    "wrapper_extras": {
+                        "nextValidID": "10",
+                        "recycledIDs": "3,5",
+                    },
+                }
+            ]
+        }
+        fl = SgffFeatureList(blocks)
+        assert len(fl) == 1
+        assert fl._wrapper_extras["nextValidID"] == "10"
+        assert fl._wrapper_extras["recycledIDs"] == "3,5"
+
+        # Sync preserves wrapper extras
+        fl.add(SgffFeature(name="B", type="CDS"))
+        block_data = blocks[10][0]
+        assert block_data["wrapper_extras"]["nextValidID"] == "10"
