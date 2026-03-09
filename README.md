@@ -21,6 +21,7 @@ flowchart LR
     subgraph SGFFP
         Reader["SgffReader"]
         Object["SgffObject"]
+        Ops["SgffOps"]
         Writer["SgffWriter"]
     end
 
@@ -32,6 +33,8 @@ flowchart LR
     DNA --> Reader
     Bytes --> Reader
     Reader --> Object
+    Object --> Ops
+    Ops --> Object
     Object --> Writer
     Object --> JSON
     Writer --> File
@@ -82,12 +85,35 @@ sgff = (
 SgffWriter.to_file(sgff, "new_plasmid.dna")
 ```
 
+### History Operations
+
+```python
+# Record edits with automatic history tracking
+sgff.ops.insert_fragment("ATCGATCG")
+sgff.ops.digest("GGCC", InputSummary={"manipulation": "insert"})
+
+# Build an entire history tree from a specification
+sgff.ops.build_from_spec(
+    [
+        {"id": 1, "operation": "ligateFragments", "sequence": "ATCGATCG",
+         "name": "Final", "children": [2, 3]},
+        {"id": 2, "operation": "makeDna", "sequence": "ATCG"},
+        {"id": 3, "operation": "makeDna", "sequence": "ATCG"},
+    ],
+    final_sequence="ATCGATCG",
+)
+
+# Edit existing history nodes in place
+sgff.ops.edit_node(node_id=2, name="Renamed", sequence="GGGGCCCC")
+```
+
 ### CLI Tool
 
 ```bash
 uv run sff check plasmid.dna    # Inspect file blocks
 uv run sff parse plasmid.dna    # Export to JSON
 uv run sff info plasmid.dna     # Show file information
+uv run sff tree plasmid.dna     # Display edit history timeline
 ```
 
 ## File Format
@@ -154,11 +180,12 @@ The table below shows which block types can be read from and written to SnapGene
 - [x] Understand whole file structure
 - [x] Correctly parse into readable format from all common blocks
 - [x] Create writer for supported block types
-- [x] Add comprehensive test suite (271 tests)
+- [x] Add comprehensive test suite (380 tests)
 - [x] Parse XML into pure JSON format
 - [x] Add write support for history blocks (LZMA compression)
 - [x] Add typed model classes for easy data access
 - [x] De novo file creation with builder pattern
+- [x] History operations API (`SgffOps`)
 - [ ] Documentation improvements
 
 ## Acknowledgments
