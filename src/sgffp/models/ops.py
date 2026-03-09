@@ -314,6 +314,51 @@ class SgffOps:
         id_counter = max(spec_by_id.keys())
         block11_snapshots: List[SgffHistoryNode] = []
 
+        def _tree_node_to_spec(
+            tree_node, new_id: int, children: List[int], sequence: str,
+        ) -> Dict[str, Any]:
+            """Build a spec dict from a SgffHistoryTreeNode, preserving rich metadata."""
+            child_spec: Dict[str, Any] = {
+                "id": new_id,
+                "operation": tree_node.operation,
+                "name": tree_node.name,
+                "type": tree_node.type,
+                "strandedness": tree_node.strandedness,
+                "circular": tree_node.circular,
+                "sequence": sequence,
+                "children": children,
+                "seq_len": tree_node.seq_len,
+            }
+            _merge_tree_node_metadata(child_spec, tree_node)
+            return child_spec
+
+        def _merge_tree_node_metadata(spec: Dict, tree_node) -> None:
+            """Copy rich metadata from a tree node into a spec dict."""
+            if tree_node.input_summaries:
+                if len(tree_node.input_summaries) == 1:
+                    spec.setdefault("InputSummary", tree_node.input_summaries[0].to_dict())
+                else:
+                    spec.setdefault("InputSummary", [s.to_dict() for s in tree_node.input_summaries])
+            if tree_node.oligos:
+                if len(tree_node.oligos) == 1:
+                    spec.setdefault("Oligo", tree_node.oligos[0].to_dict())
+                else:
+                    spec.setdefault("Oligo", [o.to_dict() for o in tree_node.oligos])
+            if tree_node.parameters:
+                params = [{"name": k, "val": v} for k, v in tree_node.parameters.items()]
+                spec.setdefault("Parameter", params[0] if len(params) == 1 else params)
+            if tree_node.primers:
+                spec.setdefault("Primers", tree_node.primers)
+            if tree_node.history_colors:
+                spec.setdefault("HistoryColors", tree_node.history_colors)
+            if tree_node.features:
+                feat = tree_node.features[0] if len(tree_node.features) == 1 else tree_node.features
+                spec.setdefault("Features", {"Feature": feat})
+            if tree_node.upstream_modification != "Unmodified":
+                spec.setdefault("upstreamModification", tree_node.upstream_modification)
+            if tree_node.downstream_modification != "Unmodified":
+                spec.setdefault("downstreamModification", tree_node.downstream_modification)
+
         def _expand_source(spec: Dict) -> None:
             """Expand a source node: import its full history subtree."""
             nonlocal id_counter
@@ -354,17 +399,10 @@ class SgffOps:
                 if old_id == src_root.id:
                     continue
                 new_id = id_map[old_id]
-                child_spec = {
-                    "id": new_id,
-                    "operation": tree_node.operation,
-                    "name": tree_node.name,
-                    "type": tree_node.type,
-                    "strandedness": tree_node.strandedness,
-                    "circular": tree_node.circular,
-                    "sequence": source.history.get_sequence_at(old_id) or "",
-                    "children": _remap_children(tree_node),
-                    "seq_len": tree_node.seq_len,
-                }
+                child_spec = _tree_node_to_spec(
+                    tree_node, new_id, _remap_children(tree_node),
+                    source.history.get_sequence_at(old_id) or "",
+                )
                 spec_by_id[new_id] = child_spec
 
             # Update this spec from the source root
@@ -380,6 +418,8 @@ class SgffOps:
             )
             spec["children"] = spec.get("children", []) + _remap_children(src_root)
             spec.setdefault("seq_len", src_root.seq_len)
+            # Preserve rich metadata from source root
+            _merge_tree_node_metadata(spec, src_root)
 
         # Expand all source nodes first
         for spec in list(spec_by_id.values()):
@@ -399,15 +439,26 @@ class SgffOps:
                 "strandedness": spec.get("strandedness", "double"),
                 "ID": str(nid),
                 "circular": "1" if spec.get("circular") else "0",
-                "operation": spec.get("operation", HistoryOperation.INVALID.value),
             }
 
-            # Mark non-root nodes as resurrectable
+            # resurrectable must appear before operation (SnapGene convention)
             if nid != root_id:
                 node_dict["resurrectable"] = "1"
+            node_dict["operation"] = spec.get(
+                "operation", HistoryOperation.INVALID.value
+            )
 
             # Forward optional tree attributes
-            for key in ("InputSummary", "Oligo", "Parameter"):
+            for key in (
+                "upstreamModification",
+                "downstreamModification",
+                "InputSummary",
+                "Oligo",
+                "Parameter",
+                "Primers",
+                "HistoryColors",
+                "Features",
+            ):
                 if key in spec:
                     node_dict[key] = spec[key]
 
@@ -465,8 +516,14 @@ class SgffOps:
             for snapshot in block11_snapshots:
                 history.add_node(snapshot)
 
-        # Set final sequence
+        # Set final sequence and sync block 0 properties from root spec
         self._sgff.sequence.value = final_sequence
+        root_spec = spec_by_id[root_id]
+        if root_spec.get("circular"):
+            self._sgff.sequence.topology = "circular"
+        strandedness = root_spec.get("strandedness", "double")
+        if strandedness:
+            self._sgff.sequence.strandedness = strandedness
 
         return self._sgff
 
