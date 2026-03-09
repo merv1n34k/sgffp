@@ -470,15 +470,9 @@ class TestHistoryRoundtrip:
         assert 11 in restored.blocks
         assert original.blocks[11] == restored.blocks[11]
 
-    def test_history_complex_roundtrip(self):
+    def test_history_complex_roundtrip(self, pib2_dna):
         """pIB2 file (9 tree nodes, 7 history nodes) roundtrips correctly"""
-        from pathlib import Path
-
-        pib2 = Path("data/samples/pIB2-SEC13-mEGFP.dna")
-        if not pib2.exists():
-            pytest.skip("pIB2 sample file not available")
-
-        original = SgffReader.from_file(pib2)
+        original = SgffReader.from_file(pib2_dna)
         assert len(original.history.tree) == 9
         assert len(original.history.nodes) == 7
 

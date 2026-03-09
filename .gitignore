@@ -18,5 +18,6 @@ htmlcov/
 
 # Data / legacy
 data/
+!tests/data/
 legacy/*
 node_*

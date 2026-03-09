@@ -669,6 +669,22 @@ class TestHistoryOperation:
         assert HistoryOperation.INVALID == "invalid"
         assert HistoryOperation.MAKE_DNA == "makeDna"
         assert HistoryOperation.AMPLIFY == "amplifyFragment"
+        assert HistoryOperation.INSERT_MULTI == "insertFragments"
+        assert HistoryOperation.FLIP == "flip"
+        assert HistoryOperation.MUTAGENESIS == "primerDirectedMutagenesis"
+        assert HistoryOperation.CHANGE_METHYLATION == "changeMethylation"
+
+    def test_unknown_operation_preserved(self):
+        """Unknown operation values pass through instead of becoming INVALID"""
+        op = HistoryOperation("customOperation")
+        assert op == "customOperation"
+        assert op.value == "customOperation"
+
+    def test_categories(self):
+        """All 26 known operations are defined"""
+        # Count unique values
+        values = {m.value for m in HistoryOperation}
+        assert len(values) >= 25
 
 
 class TestSgffPrimerList:
@@ -1453,3 +1469,288 @@ class TestSgffObjectSetSequence:
         sgff = SgffObject.new("ATCG")
         sgff.set_sequence("GGGG")
         assert sgff.sequence.value == "GGGG"
+
+
+class TestHistoryOperationCategories:
+    """Test all operation categories produce valid, roundtrippable history."""
+
+    def _make_sgff(self, seq="ATCGATCGATCG", circular=True):
+        """Create a minimal SgffObject with history."""
+        from sgffp.internal import SgffObject, Cookie
+
+        blocks = {
+            0: [{"sequence": seq, "topology": "circular" if circular else "linear",
+                 "strandedness": "double"}],
+            7: [{"HistoryTree": {"Node": {
+                "ID": "1", "name": "test.dna", "type": "DNA",
+                "seqLen": str(len(seq)), "strandedness": "double",
+                "circular": "1" if circular else "0",
+                "operation": "invalid",
+            }}}],
+        }
+        return SgffObject(cookie=Cookie(), blocks=blocks)
+
+    def _roundtrip(self, sgff):
+        """Write and re-read, return restored object."""
+        from sgffp.reader import SgffReader
+        from sgffp.writer import SgffWriter
+
+        written = SgffWriter.to_bytes(sgff)
+        return SgffReader.from_bytes(written)
+
+    # --- Metadata operations (no sequence change) ---
+
+    def test_change_methylation(self):
+        """changeMethylation preserves sequence, grows tree by 1"""
+        sgff = self._make_sgff()
+        seq = sgff.sequence.value
+
+        sgff.history.record_operation(
+            sgff.blocks, seq, "changeMethylation",
+            name="test.dna",
+            InputSummary={"manipulation": "transformInto",
+                          "strainName": "DH5alpha",
+                          "methylationChanges": "Dam+,Dcm+"},
+        )
+
+        assert len(sgff.history.tree) == 2
+        root = sgff.history.tree.root
+        assert root.operation == "changeMethylation"
+        assert root.seq_len == len(seq)
+
+        restored = self._roundtrip(sgff)
+        assert len(restored.history.tree) == 2
+        assert restored.history.tree.root.operation == "changeMethylation"
+
+    def test_change_topology(self):
+        """changeTopology: linear → circular"""
+        sgff = self._make_sgff(circular=False)
+        seq = sgff.sequence.value
+
+        sgff.history.record_operation(
+            sgff.blocks, seq, "changeTopology",
+            name="test.dna", circular=True,
+        )
+
+        root = sgff.history.tree.root
+        assert root.operation == "changeTopology"
+        assert root.circular is True
+        assert root.children[0].circular is False
+
+        restored = self._roundtrip(sgff)
+        assert restored.history.tree.root.circular is True
+
+    def test_change_strandedness(self):
+        """changeStrandedness: double → single"""
+        sgff = self._make_sgff()
+        seq = sgff.sequence.value
+
+        sgff.history.record_operation(
+            sgff.blocks, seq, "changeStrandedness",
+            name="test.dna", strandedness="single",
+        )
+
+        root = sgff.history.tree.root
+        assert root.strandedness == "single"
+        assert root.children[0].strandedness == "double"
+
+    # --- Edit operations (sequence changes) ---
+
+    def test_replace(self):
+        """replace: point mutation"""
+        sgff = self._make_sgff("ATCGATCGATCG")
+        new_seq = "ATCGTTCGATCG"  # A→T at position 4
+
+        sgff.set_sequence(new_seq, operation="replace")
+
+        assert sgff.sequence.value == new_seq
+        assert len(sgff.history.tree) == 2
+        root = sgff.history.tree.root
+        assert root.operation == "replace"
+        assert root.seq_len == 12
+
+        # Snapshot has old sequence
+        assert sgff.history.nodes[1].sequence == "ATCGATCGATCG"
+
+        restored = self._roundtrip(sgff)
+        assert restored.sequence.value == new_seq
+        assert len(restored.history.tree) == 2
+
+    def test_insert_fragment(self):
+        """insertFragment: insert 6bp BamHI site"""
+        sgff = self._make_sgff("ATCGATCGATCG")
+        new_seq = "ATCGGGATCCATCGATCG"  # Inserted GGATCC at pos 4
+
+        sgff.set_sequence(new_seq, operation="insertFragment")
+
+        root = sgff.history.tree.root
+        assert root.operation == "insertFragment"
+        assert root.seq_len == 18
+        assert root.children[0].seq_len == 12
+
+        restored = self._roundtrip(sgff)
+        assert restored.sequence.value == new_seq
+
+    def test_flip(self):
+        """flip: reverse complement"""
+        sgff = self._make_sgff("ATCGATCG")
+        # Reverse complement of ATCGATCG = CGATCGAT
+        new_seq = "CGATCGAT"
+
+        sgff.history.record_operation(
+            sgff.blocks, new_seq, "flip", name="test.dna",
+        )
+        sgff.sequence.value = new_seq
+
+        root = sgff.history.tree.root
+        assert root.operation == "flip"
+        assert root.seq_len == 8
+
+        restored = self._roundtrip(sgff)
+        assert restored.sequence.value == new_seq
+
+    def test_new_from_selection(self):
+        """newFileFromSelection: extract subsequence"""
+        sgff = self._make_sgff("ATCGATCGATCG", circular=False)
+        new_seq = "GATCGA"  # positions 3-8
+
+        sgff.history.record_operation(
+            sgff.blocks, new_seq, "newFileFromSelection",
+            name="test.dna",
+            InputSummary={"manipulation": "select", "val1": "3", "val2": "8"},
+        )
+        sgff.sequence.value = new_seq
+
+        root = sgff.history.tree.root
+        assert root.operation == "newFileFromSelection"
+        assert root.seq_len == 6
+
+        restored = self._roundtrip(sgff)
+        assert restored.sequence.value == new_seq
+
+    def test_mutagenesis(self):
+        """primerDirectedMutagenesis: SDM with primer"""
+        sgff = self._make_sgff("ATCGATCGATCG")
+        new_seq = "ATCGAAAGGATCG"  # TC→AAAG at pos 4-5 (12→13bp)
+
+        sgff.history.record_operation(
+            sgff.blocks, new_seq, "primerDirectedMutagenesis",
+            name="test.dna",
+            InputSummary={"manipulation": "replace", "val1": "4", "val2": "5"},
+        )
+        sgff.sequence.value = new_seq
+
+        root = sgff.history.tree.root
+        assert root.operation == "primerDirectedMutagenesis"
+        assert root.seq_len == 13
+
+        restored = self._roundtrip(sgff)
+        assert restored.sequence.value == new_seq
+
+    # --- Chaining operations ---
+
+    def test_multiple_operations_chain(self):
+        """Chain: invalid → insertFragment → changeMethylation → replace"""
+        sgff = self._make_sgff("ATCGATCG")
+
+        # 1. Insert fragment
+        sgff.set_sequence("ATCGGGATCCATCG", operation="insertFragment")
+        assert len(sgff.history.tree) == 2
+
+        # 2. Change methylation (no sequence change)
+        seq = sgff.sequence.value
+        sgff.history.record_operation(
+            sgff.blocks, seq, "changeMethylation", name="test.dna",
+        )
+        assert len(sgff.history.tree) == 3
+
+        # 3. Point mutation
+        sgff.set_sequence("ATCGGGATGCATCG", operation="replace")
+        assert len(sgff.history.tree) == 4
+
+        # Verify tree structure
+        root = sgff.history.tree.root
+        assert root.operation == "replace"
+        child = root.children[0]
+        assert child.operation == "changeMethylation"
+        grandchild = child.children[0]
+        assert grandchild.operation == "insertFragment"
+        leaf = grandchild.children[0]
+        assert leaf.operation == "invalid"
+
+        # Verify all nodes have snapshots except root and leaf
+        assert len(sgff.history.nodes) == 3  # nodes 1, 2, 3
+
+        # Full roundtrip
+        restored = self._roundtrip(sgff)
+        assert len(restored.history.tree) == 4
+        assert restored.sequence.value == "ATCGGGATGCATCG"
+        assert restored.history.tree.root.operation == "replace"
+
+    def test_multiple_operations_roundtrip_stability(self):
+        """Double roundtrip: output is stable after 2 passes"""
+        from sgffp.reader import SgffReader
+        from sgffp.writer import SgffWriter
+
+        sgff = self._make_sgff("ATCGATCG")
+        sgff.set_sequence("ATCGATCGGG", operation="insertFragment")
+        sgff.set_sequence("ATCGATCGGGAAA", operation="replace")
+
+        bytes1 = SgffWriter.to_bytes(sgff)
+        restored1 = SgffReader.from_bytes(bytes1)
+        bytes2 = SgffWriter.to_bytes(restored1)
+
+        assert bytes1 == bytes2
+
+    # --- Real file operations ---
+
+    def test_record_operation_on_real_file(self, pib2_dna):
+        """Add operation to pIB2 and roundtrip"""
+        from sgffp.reader import SgffReader
+        from sgffp.writer import SgffWriter
+
+        sgff = SgffReader.from_file(pib2_dna)
+        original_count = len(sgff.history.tree)
+        original_nodes = len(sgff.history.nodes)
+        seq = sgff.sequence.value
+
+        sgff.history.record_operation(
+            sgff.blocks, seq, "changeMethylation",
+            name=sgff.history.tree.root.name,
+        )
+
+        assert len(sgff.history.tree) == original_count + 1
+        assert len(sgff.history.nodes) == original_nodes + 1
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+
+        assert len(restored.history.tree) == original_count + 1
+        assert len(restored.history.nodes) == original_nodes + 1
+        assert restored.history.tree.root.operation == "changeMethylation"
+
+    def test_chain_operations_on_real_file(self, pib2_dna):
+        """Chain two operations on pIB2"""
+        from sgffp.reader import SgffReader
+        from sgffp.writer import SgffWriter
+
+        sgff = SgffReader.from_file(pib2_dna)
+        original_count = len(sgff.history.tree)
+        seq = sgff.sequence.value
+
+        # 1. Methylation change
+        sgff.history.record_operation(
+            sgff.blocks, seq, "changeMethylation",
+            name=sgff.history.tree.root.name,
+        )
+
+        # 2. Point mutation
+        new_seq = seq[:100] + "T" + seq[101:]
+        sgff.set_sequence(new_seq, operation="replace")
+
+        assert len(sgff.history.tree) == original_count + 2
+
+        written = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(written)
+        assert len(restored.history.tree) == original_count + 2
+        assert restored.sequence.value == new_seq

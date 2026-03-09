@@ -43,6 +43,12 @@ def test_prot(data_dir):
 
 
 @pytest.fixture
+def pib2_dna(data_dir):
+    """Path to pIB2-SEC13-mEGFP.dna sample file"""
+    return data_dir / "pIB2-SEC13-mEGFP.dna"
+
+
+@pytest.fixture
 def all_test_files(test_dna, test2_dna, test3_dna, test_rna, test_prot):
     """All test files for parametrized tests"""
     return [test_dna, test2_dna, test3_dna, test_rna, test_prot]
