@@ -110,6 +110,7 @@ class SgffObject:
         self._properties: Optional[SgffProperties] = None
         self._alignments: Optional[SgffAlignmentList] = None
         self._traces: Optional[SgffTraceList] = None
+        self._ops = None
 
     def invalidate(self) -> None:
         """Clear cached model instances."""
@@ -121,6 +122,7 @@ class SgffObject:
         self._properties = None
         self._alignments = None
         self._traces = None
+        self._ops = None
 
     @property
     def types(self) -> List[int]:
@@ -223,6 +225,15 @@ class SgffObject:
         if self._traces is None:
             self._traces = SgffTraceList(self.blocks)
         return self._traces
+
+    @property
+    def ops(self):
+        """Operations API for recording history changes."""
+        if self._ops is None:
+            from .models.ops import SgffOps
+
+            self._ops = SgffOps(self)
+        return self._ops
 
     @property
     def has_notes(self) -> bool:
