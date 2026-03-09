@@ -7,9 +7,9 @@ that automatically record history entries.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List
 
-from .history import HistoryOperation, SgffHistoryNode, SgffHistoryTree
+from .history import HistoryOperation, SgffHistoryNode
 
 if TYPE_CHECKING:
     from ..internal import SgffObject
@@ -468,5 +468,110 @@ class SgffOps:
 
         # Set final sequence
         self._sgff.sequence.value = final_sequence
+
+        return self._sgff
+
+    # -------------------------------------------------------------------------
+    # Node editing
+    # -------------------------------------------------------------------------
+
+    def edit_node(self, node_id: int, **kwargs) -> SgffObject:
+        """Edit a history tree node in place.
+
+        Supported kwargs:
+            name, operation, circular, strandedness — update tree node (block 7)
+            sequence — update block 11 snapshot + tree node seqLen
+            InputSummary, Oligo, Parameter — update tree node nested elements
+
+        No validation of upstream/downstream consistency — caller is
+        responsible. Leaf nodes are always safe to edit.
+
+        Args:
+            node_id: The ID of the tree node to edit.
+            **kwargs: Fields to update.
+
+        Returns:
+            SgffObject for chaining.
+
+        Raises:
+            ValueError: If the node doesn't exist.
+        """
+        history = self._sgff.history
+        if not history.tree:
+            raise ValueError("No history tree exists")
+
+        tree_node = history.tree.get(node_id)
+        if tree_node is None:
+            raise ValueError(f"Node {node_id} not found in history tree")
+
+        # Update tree node attributes
+        if "name" in kwargs:
+            tree_node.name = kwargs["name"]
+        if "operation" in kwargs:
+            tree_node.operation = kwargs["operation"]
+        if "circular" in kwargs:
+            tree_node.circular = kwargs["circular"]
+        if "strandedness" in kwargs:
+            tree_node.strandedness = kwargs["strandedness"]
+
+        # Update nested elements
+        if "InputSummary" in kwargs:
+            from .history import SgffInputSummary
+
+            data = kwargs["InputSummary"]
+            if isinstance(data, dict):
+                tree_node.input_summaries = [SgffInputSummary.from_dict(data)]
+            elif isinstance(data, list):
+                tree_node.input_summaries = [
+                    SgffInputSummary.from_dict(d) for d in data
+                ]
+
+        if "Oligo" in kwargs:
+            from .history import SgffHistoryOligo
+
+            data = kwargs["Oligo"]
+            if isinstance(data, dict):
+                tree_node.oligos = [SgffHistoryOligo.from_dict(data)]
+            elif isinstance(data, list):
+                tree_node.oligos = [SgffHistoryOligo.from_dict(d) for d in data]
+
+        if "Parameter" in kwargs:
+            data = kwargs["Parameter"]
+            if isinstance(data, dict):
+                tree_node.parameters = {data.get("name", ""): data.get("val", "")}
+            elif isinstance(data, list):
+                tree_node.parameters = {
+                    p.get("name", ""): p.get("val", "") for p in data
+                }
+
+        # Update sequence → block 11 snapshot + seqLen
+        if "sequence" in kwargs:
+            new_seq = kwargs["sequence"]
+            tree_node.seq_len = len(new_seq)
+
+            # Update or create block 11 snapshot
+            existing = history.get_node(node_id)
+            if existing:
+                existing.sequence = new_seq
+                existing.length = len(new_seq)
+                existing.header_seq_length = min(len(new_seq), 65535)
+                history._sync_nodes()
+            else:
+                snapshot_dict = {
+                    "node_index": node_id,
+                    "sequence": new_seq,
+                    "sequence_type": 1,
+                    "length": len(new_seq),
+                    "format_version": 30,
+                    "strandedness_flag": 1
+                    if tree_node.strandedness == "double"
+                    else 0,
+                    "property_flags": 1,
+                    "header_seq_length": min(len(new_seq), 65535),
+                }
+                history.add_node(SgffHistoryNode.from_dict(snapshot_dict))
+
+        # Re-sync tree to block 7
+        history._sync_tree()
 
         return self._sgff

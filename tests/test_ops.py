@@ -4,7 +4,7 @@ Tests for SgffOps operations API
 
 import pytest
 
-from sgffp import SgffObject, SgffReader, SgffWriter, SgffOps
+from sgffp import SgffObject, SgffReader, SgffWriter
 from sgffp.models.history import HistoryOperation
 
 
@@ -643,3 +643,107 @@ class TestSgffOpsBuildFromSpec:
                 ],
                 final_sequence="ATCG",
             )
+
+
+# -------------------------------------------------------------------------
+# edit_node
+# -------------------------------------------------------------------------
+
+
+class TestSgffOpsEditNode:
+    def _make_two_node_tree(self):
+        """Helper: returns sgff with root(id=2) → child(id=1)."""
+        sgff = _make_sgff("ATCG")
+        sgff.ops.insert_fragment("ATCGATCG")
+        return sgff
+
+    def test_edit_node_name(self):
+        """Rename a node."""
+        sgff = self._make_two_node_tree()
+        root_id = sgff.history.tree.root.id
+
+        result = sgff.ops.edit_node(root_id, name="Renamed")
+
+        assert result is sgff
+        assert sgff.history.tree.root.name == "Renamed"
+
+    def test_edit_node_sequence(self):
+        """Update block 11 snapshot + seqLen."""
+        sgff = self._make_two_node_tree()
+        # Edit the child node (non-root, has block 11 snapshot)
+        child = sgff.history.tree.root.children[0]
+        old_id = child.id
+
+        sgff.ops.edit_node(old_id, sequence="GGCCGGCC")
+
+        assert sgff.history.tree.get(old_id).seq_len == 8
+        snapshot = sgff.history.get_node(old_id)
+        assert snapshot is not None
+        assert snapshot.sequence == "GGCCGGCC"
+        assert snapshot.length == 8
+
+    def test_edit_leaf_sequence(self):
+        """Editing a leaf's sequence is safe."""
+        sgff = self._make_two_node_tree()
+        leaf = sgff.history.tree.root.children[0]
+        assert len(leaf.children) == 0  # confirm it's a leaf
+
+        sgff.ops.edit_node(leaf.id, sequence="TTTT")
+        assert sgff.history.tree.get(leaf.id).seq_len == 4
+
+    def test_edit_node_operation(self):
+        """Change operation type."""
+        sgff = self._make_two_node_tree()
+        root_id = sgff.history.tree.root.id
+
+        sgff.ops.edit_node(root_id, operation="gibsonAssembly")
+
+        assert sgff.history.tree.root.operation == "gibsonAssembly"
+
+    def test_edit_node_roundtrip(self):
+        """Write → read → verify edits persist."""
+        sgff = self._make_two_node_tree()
+        root_id = sgff.history.tree.root.id
+        sgff.ops.edit_node(root_id, name="Edited", operation="digest")
+
+        data = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(data)
+
+        assert restored.history.tree.root.name == "Edited"
+        assert restored.history.tree.root.operation == "digest"
+
+    def test_edit_nonexistent_node(self):
+        """Raises ValueError for nonexistent node."""
+        sgff = _make_sgff("ATCG")
+        with pytest.raises(ValueError, match="not found"):
+            sgff.ops.edit_node(9999, name="Nope")
+
+    def test_edit_no_history(self):
+        """Raises ValueError when no history exists."""
+        sgff = SgffObject.new(sequence="ATCG")
+        with pytest.raises(ValueError, match="No history"):
+            sgff.ops.edit_node(1, name="Nope")
+
+    def test_edit_node_circular(self):
+        """Toggle circular flag."""
+        sgff = self._make_two_node_tree()
+        root_id = sgff.history.tree.root.id
+
+        sgff.ops.edit_node(root_id, circular=True)
+        assert sgff.history.tree.root.circular is True
+
+        sgff.ops.edit_node(root_id, circular=False)
+        assert sgff.history.tree.root.circular is False
+
+    def test_edit_node_creates_snapshot_if_missing(self):
+        """Editing sequence on a node without a snapshot creates one."""
+        sgff = _make_sgff("ATCG")
+        # Root node (id=1) has no block 11 snapshot
+        root_id = sgff.history.tree.root.id
+        assert sgff.history.get_node(root_id) is None
+
+        sgff.ops.edit_node(root_id, sequence="GGGG")
+
+        snapshot = sgff.history.get_node(root_id)
+        assert snapshot is not None
+        assert snapshot.sequence == "GGGG"
