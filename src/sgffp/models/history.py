@@ -21,30 +21,58 @@ from .trace import SgffTraceList
 
 
 class HistoryOperation(str, Enum):
-    """Known history operation types"""
+    """Known history operation types.
 
-    INVALID = "invalid"  # Root/original import
+    Categories:
+      - base: original/imported file
+      - create: de novo sequence creation
+      - cloning: molecular cloning operations
+      - edit: sequence modifications
+      - metadata: property changes (no sequence change)
+    """
+
+    # Base
+    INVALID = "invalid"
+
+    # Create
     MAKE_DNA = "makeDna"
     MAKE_RNA = "makeRna"
     MAKE_PROTEIN = "makeProtein"
+
+    # Cloning
     AMPLIFY = "amplifyFragment"
     INSERT = "insertFragment"
-    REPLACE = "replace"
+    INSERT_MULTI = "insertFragments"
     DIGEST = "digest"
-    LIGATE = "ligate"
-    GATEWAY_LR = "gatewayLR"
-    GATEWAY_BP = "gatewayBP"
+    LIGATE = "ligateFragments"
+    GATEWAY_LR = "gatewayLRCloning"
+    GATEWAY_BP = "gatewayBPCloning"
     GIBSON = "gibsonAssembly"
     GOLDEN_GATE = "goldenGateAssembly"
-    RESTRICTION_CLONE = "restrictionClone"
-    TA_CLONE = "taClone"
-    TOPO_CLONE = "topoClone"
-    IN_FUSION = "inFusion"
+    RESTRICTION_CLONE = "restrictionCloning"
+    TA_CLONE = "taCloning"
+    TOPO_CLONE = "topoCloning"
+    IN_FUSION = "inFusionCloning"
+
+    # Edit
+    REPLACE = "replace"
+    FLIP = "flip"
+    NEW_FROM_SELECTION = "newFileFromSelection"
+    MUTAGENESIS = "primerDirectedMutagenesis"
+
+    # Metadata (no sequence change)
+    CHANGE_METHYLATION = "changeMethylation"
+    CHANGE_PHOSPHORYLATION = "changePhosphorylation"
+    CHANGE_STRANDEDNESS = "changeStrandedness"
+    CHANGE_TOPOLOGY = "changeTopology"
 
     @classmethod
     def _missing_(cls, value: str) -> "HistoryOperation":
-        """Handle unknown operations."""
-        return cls.INVALID
+        """Handle unknown operations gracefully."""
+        obj = str.__new__(cls, value)
+        obj._name_ = value
+        obj._value_ = value
+        return obj
 
 
 # -----------------------------------------------------------------------------
@@ -772,12 +800,30 @@ class SgffHistory(SgffModel):
             self._remove_block(7)
 
     def _sync_nodes(self) -> None:
-        """Write nodes to block storage."""
-        if self._nodes:
-            node_dicts = [node.to_dict() for node in self._nodes.values()]
-            self._set_blocks(11, node_dicts)
-        else:
+        """Write nodes to block storage in tree depth-first order.
+
+        SnapGene expects block 11 entries ordered by tree traversal
+        (depth-first, skipping root and non-resurrectable nodes).
+        """
+        if not self._nodes:
             self._remove_block(11)
+            return
+
+        # Order by tree depth-first traversal when tree is available
+        if self._tree and self._tree.root:
+            ordered = []
+            for tree_node in self._tree.walk():
+                if tree_node.id in self._nodes:
+                    ordered.append(self._nodes[tree_node.id])
+            # Append any orphan nodes not in the tree
+            seen = {n.index for n in ordered}
+            for node in self._nodes.values():
+                if node.index not in seen:
+                    ordered.append(node)
+        else:
+            ordered = list(self._nodes.values())
+
+        self._set_blocks(11, [node.to_dict() for node in ordered])
 
     def _sync_modifiers(self) -> None:
         """Write modifiers to block storage."""
@@ -891,8 +937,15 @@ class SgffHistory(SgffModel):
         raw_tree = self._get_block(7)
         old_root_dict = raw_tree["HistoryTree"]["Node"]
 
-        # Mark old root resurrectable in the raw dict
-        old_root_dict["resurrectable"] = "1"
+        # Mark old root resurrectable — insert before 'operation' to match
+        # SnapGene's attribute ordering convention.
+        rebuilt_old = {}
+        for k, v in old_root_dict.items():
+            if k == "operation":
+                rebuilt_old["resurrectable"] = "1"
+            rebuilt_old[k] = v
+        if "resurrectable" not in rebuilt_old:
+            rebuilt_old["resurrectable"] = "1"
 
         new_id = self.next_id()
         new_root_dict = {
@@ -903,8 +956,11 @@ class SgffHistory(SgffModel):
             "ID": str(new_id),
             "circular": "1" if tree_kwargs.get("circular", old_root.circular) else "0",
             "operation": operation,
-            "Node": old_root_dict,
         }
+        # InputSummary is required — SnapGene segfaults on non-leaf nodes
+        # without it. Use caller-provided or empty as safe default.
+        new_root_dict["InputSummary"] = tree_kwargs.pop("InputSummary", {})
+        new_root_dict["Node"] = rebuilt_old
 
         # Write directly to block storage (no to_dict re-serialization)
         self._set_block(7, {"HistoryTree": {"Node": new_root_dict}})

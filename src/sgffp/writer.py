@@ -303,7 +303,7 @@ class SgffWriter:
         xml_str = xmltodict.unparse(
             xml_data, full_document=False, short_empty_elements=True
         )
-        xml_str = '<?xml version="1.0" encoding="UTF-8"?>' + xml_str
+        xml_str = '<?xml version="1.0" encoding="UTF-8"?>' + xml_str + "\n"
         return lzma.compress(xml_str.encode("utf-8"))
 
     def _serialize_lzma_json(self, data: Any) -> bytes:
