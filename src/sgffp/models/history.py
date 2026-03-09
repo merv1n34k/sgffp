@@ -224,14 +224,16 @@ class SgffHistoryTreeNode:
                 for p in param_data:
                     parameters[p.get("name", "")] = p.get("val", "")
 
-        # Parse input summaries (can be single dict or list)
+        # Parse input summaries (can be single dict, list, None, or {})
+        # Empty/None InputSummary must be preserved — SnapGene requires
+        # <InputSummary/> on every non-leaf node (segfaults without it).
         input_summaries = []
-        input_data = data.get("InputSummary")
-        if input_data:
+        if "InputSummary" in data:
+            input_data = data["InputSummary"]
             if isinstance(input_data, list):
                 input_summaries = [SgffInputSummary.from_dict(d) for d in input_data]
             else:
-                input_summaries = [SgffInputSummary.from_dict(input_data)]
+                input_summaries = [SgffInputSummary.from_dict(input_data or {})]
 
         # Parse features
         features = []
@@ -313,6 +315,10 @@ class SgffHistoryTreeNode:
                 result["InputSummary"] = self.input_summaries[0].to_dict()
             else:
                 result["InputSummary"] = [s.to_dict() for s in self.input_summaries]
+        elif self.children:
+            # Non-leaf nodes MUST have InputSummary — SnapGene segfaults without it.
+            # None serializes to <InputSummary/> via xmltodict.
+            result["InputSummary"] = None
 
         if self.primers:
             result["Primers"] = self.primers

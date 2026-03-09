@@ -55,7 +55,6 @@ class SgffOps:
             "ID": "1",
             "circular": "1" if seq.topology == "circular" else "0",
             "operation": HistoryOperation.INVALID.value,
-            "InputSummary": {},
         }
 
         tree_dict = {"HistoryTree": {"Node": root_dict}}
