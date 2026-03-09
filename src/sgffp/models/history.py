@@ -290,15 +290,16 @@ class SgffHistoryTreeNode:
         result["strandedness"] = self.strandedness
         result["ID"] = str(self.id)
         result["circular"] = "1" if self.circular else "0"
+
+        # resurrectable must appear before operation (SnapGene convention)
+        if self.resurrectable:
+            result["resurrectable"] = "1"
         result["operation"] = self.operation
 
         if self.upstream_modification != "Unmodified":
             result["upstreamModification"] = self.upstream_modification
         if self.downstream_modification != "Unmodified":
             result["downstreamModification"] = self.downstream_modification
-
-        if self.resurrectable:
-            result["resurrectable"] = "1"
 
         if self.oligos:
             if len(self.oligos) == 1:
