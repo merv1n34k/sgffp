@@ -7,9 +7,9 @@ that automatically record history entries.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
-from .history import HistoryOperation
+from .history import HistoryOperation, SgffHistoryNode, SgffHistoryTree
 
 if TYPE_CHECKING:
     from ..internal import SgffObject
@@ -258,3 +258,215 @@ class SgffOps:
     def custom(self, operation: str, new_sequence: str, **tree_kwargs) -> SgffObject:
         """Record any operation string with full control over tree kwargs."""
         return self._record(operation, new_sequence, **tree_kwargs)
+
+    # -------------------------------------------------------------------------
+    # Bulk tree construction
+    # -------------------------------------------------------------------------
+
+    def build_from_spec(
+        self, nodes: List[Dict[str, Any]], final_sequence: str
+    ) -> SgffObject:
+        """Build an entire history tree from a specification.
+
+        Each node dict supports two modes:
+
+        **Manual node** (define from scratch)::
+
+            {"id": 1, "operation": "ligateFragments", "sequence": "ATCG...",
+             "name": "Final", "children": [2, 3]}
+
+        **Import node** (from existing SgffObject)::
+
+            {"id": 2, "source": sgff1}
+
+        Args:
+            nodes: List of node dicts describing the tree.
+            final_sequence: The final sequence to set on the SgffObject.
+
+        Returns:
+            SgffObject for chaining.
+        """
+        if not nodes:
+            raise ValueError("nodes list must not be empty")
+
+        # Index nodes by id
+        spec_by_id: Dict[int, Dict] = {}
+        for spec in nodes:
+            nid = spec.get("id")
+            if nid is None:
+                raise ValueError("Every node must have an 'id' field")
+            if nid in spec_by_id:
+                raise ValueError(f"Duplicate node id: {nid}")
+            spec_by_id[nid] = spec
+
+        # Find root: the node not referenced as a child by any other node
+        all_children: set = set()
+        for spec in nodes:
+            for cid in spec.get("children", []):
+                all_children.add(cid)
+        root_ids = [nid for nid in spec_by_id if nid not in all_children]
+        if len(root_ids) != 1:
+            raise ValueError(
+                f"Expected exactly one root node, found {len(root_ids)}: {root_ids}"
+            )
+        root_id = root_ids[0]
+
+        # Expand source nodes: flatten imported trees and collect snapshots
+        id_counter = max(spec_by_id.keys())
+        block11_snapshots: List[SgffHistoryNode] = []
+
+        def _expand_source(spec: Dict) -> None:
+            """Expand a source node: import its full history subtree."""
+            nonlocal id_counter
+            source: SgffObject = spec["source"]
+            if not source.has_history or not source.history.tree:
+                # Source has no history — treat as leaf with its sequence
+                spec.pop("source")
+                spec.setdefault("operation", HistoryOperation.INVALID.value)
+                spec.setdefault("sequence", source.sequence.value)
+                return
+
+            src_tree = source.history.tree
+            src_root = src_tree.root
+
+            # Map old IDs → new IDs to avoid conflicts
+            old_ids = list(src_tree.nodes.keys())
+            id_map: Dict[int, int] = {}
+            # The source root gets the spec's id
+            id_map[src_root.id] = spec["id"]
+            for old_id in old_ids:
+                if old_id != src_root.id:
+                    id_counter += 1
+                    id_map[old_id] = id_counter
+
+            # Copy block 11 snapshots from source with remapped IDs
+            for idx, node in source.history.nodes.items():
+                if idx in id_map:
+                    new_node_dict = node.to_dict()
+                    new_node_dict["node_index"] = id_map[idx]
+                    block11_snapshots.append(SgffHistoryNode.from_dict(new_node_dict))
+
+            # Build children list for this spec from the source tree
+            def _remap_children(tree_node) -> List[int]:
+                return [id_map[c.id] for c in tree_node.children]
+
+            # Register child specs from source tree (non-root nodes)
+            for old_id, tree_node in src_tree.nodes.items():
+                if old_id == src_root.id:
+                    continue
+                new_id = id_map[old_id]
+                child_spec = {
+                    "id": new_id,
+                    "operation": tree_node.operation,
+                    "name": tree_node.name,
+                    "type": tree_node.type,
+                    "strandedness": tree_node.strandedness,
+                    "circular": tree_node.circular,
+                    "sequence": source.history.get_sequence_at(old_id) or "",
+                    "children": _remap_children(tree_node),
+                    "seq_len": tree_node.seq_len,
+                }
+                spec_by_id[new_id] = child_spec
+
+            # Update this spec from the source root
+            spec.pop("source")
+            spec.setdefault("operation", spec.get("operation", src_root.operation))
+            spec.setdefault("name", src_root.name)
+            spec.setdefault("type", src_root.type)
+            spec.setdefault("strandedness", src_root.strandedness)
+            spec.setdefault("circular", src_root.circular)
+            spec.setdefault(
+                "sequence", source.history.get_sequence_at(src_root.id)
+                or source.sequence.value
+            )
+            spec["children"] = spec.get("children", []) + _remap_children(src_root)
+            spec.setdefault("seq_len", src_root.seq_len)
+
+        # Expand all source nodes first
+        for spec in list(spec_by_id.values()):
+            if "source" in spec:
+                _expand_source(spec)
+
+        # Build tree dict recursively
+        def _build_node_dict(nid: int) -> Dict[str, Any]:
+            spec = spec_by_id[nid]
+            seq = spec.get("sequence", "")
+            seq_len = spec.get("seq_len", len(seq) if seq else 0)
+
+            node_dict: Dict[str, Any] = {
+                "name": spec.get("name", ""),
+                "type": spec.get("type", "DNA"),
+                "seqLen": str(seq_len),
+                "strandedness": spec.get("strandedness", "double"),
+                "ID": str(nid),
+                "circular": "1" if spec.get("circular") else "0",
+                "operation": spec.get("operation", HistoryOperation.INVALID.value),
+            }
+
+            # Mark non-root nodes as resurrectable
+            if nid != root_id:
+                node_dict["resurrectable"] = "1"
+
+            # Forward optional tree attributes
+            for key in ("InputSummary", "Oligo", "Parameter"):
+                if key in spec:
+                    node_dict[key] = spec[key]
+
+            children_ids = spec.get("children", [])
+
+            # Non-leaf nodes need InputSummary (SnapGene segfaults without it)
+            if children_ids and "InputSummary" not in node_dict:
+                node_dict["InputSummary"] = {}
+
+            # Recurse into children
+            if children_ids:
+                child_dicts = [_build_node_dict(cid) for cid in children_ids]
+                if len(child_dicts) == 1:
+                    node_dict["Node"] = child_dicts[0]
+                else:
+                    node_dict["Node"] = child_dicts
+
+            return node_dict
+
+        root_dict = _build_node_dict(root_id)
+        tree_dict = {"HistoryTree": {"Node": root_dict}}
+
+        # Write block 7
+        history = self._sgff.history
+        history._set_block(7, tree_dict)
+        history._tree = None
+        history._linked = False
+        _ = history.tree  # trigger parse
+
+        # Create block 11 snapshots for non-root manual nodes
+        for nid, spec in spec_by_id.items():
+            if nid == root_id:
+                continue
+            # Skip if already covered by source import
+            if any(s.index == nid for s in block11_snapshots):
+                continue
+            seq = spec.get("sequence", "")
+            if not seq:
+                continue
+            snapshot_dict: Dict[str, Any] = {
+                "node_index": nid,
+                "sequence": seq,
+                "sequence_type": 1,  # compressed DNA
+                "length": len(seq),
+                "format_version": 30,
+                "strandedness_flag": 1 if spec.get("strandedness", "double") == "double" else 0,
+                "property_flags": 1,
+                "header_seq_length": min(len(seq), 65535),
+            }
+            block11_snapshots.append(SgffHistoryNode.from_dict(snapshot_dict))
+
+        # Write block 11 snapshots
+        if block11_snapshots:
+            history._nodes = None  # reset cache
+            for snapshot in block11_snapshots:
+                history.add_node(snapshot)
+
+        # Set final sequence
+        self._sgff.sequence.value = final_sequence
+
+        return self._sgff

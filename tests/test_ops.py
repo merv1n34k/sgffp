@@ -337,3 +337,309 @@ class TestSgffOpsGeneral:
         sgff.invalidate()
         ops2 = sgff.ops
         assert ops1 is not ops2
+
+
+# -------------------------------------------------------------------------
+# build_from_spec
+# -------------------------------------------------------------------------
+
+
+class TestSgffOpsBuildFromSpec:
+    def test_linear_tree(self):
+        """3 nodes in a chain: makeDna → insert → replace."""
+        sgff = SgffObject.new(sequence="")
+        sgff.ops.build_from_spec(
+            [
+                {
+                    "id": 1,
+                    "operation": "replace",
+                    "sequence": "GGCC",
+                    "children": [2],
+                },
+                {
+                    "id": 2,
+                    "operation": "insertFragment",
+                    "sequence": "ATCGATCG",
+                    "children": [3],
+                },
+                {
+                    "id": 3,
+                    "operation": "makeDna",
+                    "sequence": "ATCG",
+                },
+            ],
+            final_sequence="GGCC",
+        )
+
+        assert sgff.sequence.value == "GGCC"
+        tree = sgff.history.tree
+        assert len(tree) == 3
+        assert tree.root.id == 1
+        assert tree.root.operation == "replace"
+        assert len(tree.root.children) == 1
+        assert tree.root.children[0].id == 2
+
+    def test_branching_tree(self):
+        """Root with 2 children (ligation of 2 fragments)."""
+        sgff = SgffObject.new(sequence="")
+        sgff.ops.build_from_spec(
+            [
+                {
+                    "id": 1,
+                    "operation": "ligateFragments",
+                    "sequence": "ATCGATCG",
+                    "name": "Ligated",
+                    "children": [2, 3],
+                },
+                {"id": 2, "operation": "makeDna", "sequence": "ATCG"},
+                {"id": 3, "operation": "makeDna", "sequence": "ATCG"},
+            ],
+            final_sequence="ATCGATCG",
+        )
+
+        tree = sgff.history.tree
+        assert len(tree) == 3
+        assert len(tree.root.children) == 2
+        assert tree.root.name == "Ligated"
+
+    def test_deep_tree(self):
+        """5+ levels deep."""
+        nodes = []
+        for i in range(1, 7):
+            node = {"id": i, "operation": "replace", "sequence": "A" * i}
+            if i < 6:
+                node["children"] = [i + 1]
+            nodes.append(node)
+
+        sgff = SgffObject.new(sequence="")
+        sgff.ops.build_from_spec(nodes, final_sequence="AAAAAA")
+
+        tree = sgff.history.tree
+        assert len(tree) == 6
+        # Walk from root to deepest leaf
+        node = tree.root
+        depth = 0
+        while node.children:
+            node = node.children[0]
+            depth += 1
+        assert depth == 5
+
+    def test_build_from_spec_roundtrip(self):
+        """Write → read → verify structure."""
+        sgff = SgffObject.new(sequence="")
+        sgff.ops.build_from_spec(
+            [
+                {
+                    "id": 1,
+                    "operation": "insertFragment",
+                    "sequence": "ATCGATCG",
+                    "children": [2],
+                },
+                {"id": 2, "operation": "makeDna", "sequence": "ATCG"},
+            ],
+            final_sequence="ATCGATCG",
+        )
+
+        data = SgffWriter.to_bytes(sgff)
+        restored = SgffReader.from_bytes(data)
+
+        assert restored.sequence.value == "ATCGATCG"
+        tree = restored.history.tree
+        assert len(tree) == 2
+        assert tree.root.operation == "insertFragment"
+        assert tree.root.children[0].operation == "makeDna"
+
+    def test_build_sets_final_sequence(self):
+        """Main sequence matches final_sequence."""
+        sgff = SgffObject.new(sequence="")
+        sgff.ops.build_from_spec(
+            [{"id": 1, "operation": "makeDna", "sequence": "ATCG"}],
+            final_sequence="ATCG",
+        )
+        assert sgff.sequence.value == "ATCG"
+
+    def test_build_creates_block11_snapshots(self):
+        """Non-root nodes have block 11 entries."""
+        sgff = SgffObject.new(sequence="")
+        sgff.ops.build_from_spec(
+            [
+                {
+                    "id": 1,
+                    "operation": "insertFragment",
+                    "sequence": "ATCGATCG",
+                    "children": [2],
+                },
+                {"id": 2, "operation": "makeDna", "sequence": "ATCG"},
+            ],
+            final_sequence="ATCGATCG",
+        )
+
+        # Node 2 (non-root) should have a block 11 snapshot
+        node = sgff.history.get_node(2)
+        assert node is not None
+        assert node.sequence == "ATCG"
+        assert node.length == 4
+
+    def test_build_input_summary_injected(self):
+        """Non-leaf nodes get InputSummary automatically."""
+        sgff = SgffObject.new(sequence="")
+        sgff.ops.build_from_spec(
+            [
+                {
+                    "id": 1,
+                    "operation": "insertFragment",
+                    "sequence": "ATCGATCG",
+                    "children": [2],
+                },
+                {"id": 2, "operation": "makeDna", "sequence": "ATCG"},
+            ],
+            final_sequence="ATCGATCG",
+        )
+
+        # Root (non-leaf) should have InputSummary
+        raw = sgff.history._get_block(7)
+        root_node = raw["HistoryTree"]["Node"]
+        assert "InputSummary" in root_node
+
+    def test_import_source_file(self, pib2_dna):
+        """Import existing .dna file as subtree."""
+        source = SgffReader.from_file(str(pib2_dna))
+        source_tree_len = len(source.history.tree)
+
+        sgff = SgffObject.new(sequence="")
+        sgff.ops.build_from_spec(
+            [
+                {
+                    "id": 1,
+                    "operation": "insertFragment",
+                    "sequence": source.sequence.value + "GGATCC",
+                    "children": [2],
+                },
+                {"id": 2, "source": source},
+            ],
+            final_sequence=source.sequence.value + "GGATCC",
+        )
+
+        tree = sgff.history.tree
+        # Root + all imported nodes from source
+        assert len(tree) == 1 + source_tree_len
+
+    def test_combine_three_files(self, pib2_dna):
+        """Combine 3 SgffObjects with full history."""
+        s1 = SgffObject.new(sequence="ATCG")
+        s1.ops._ensure_history()
+        s1.ops.insert_fragment("ATCGATCG")
+
+        s2 = SgffObject.new(sequence="GGCC")
+        s2.ops._ensure_history()
+
+        s3 = SgffObject.new(sequence="TTAA")
+        s3.ops._ensure_history()
+        s3.ops.replace("TTAATTAA")
+
+        combined_seq = "ATCGATCGGGCCTTAATTAA"
+        result = SgffObject.new(sequence="")
+        result.ops.build_from_spec(
+            [
+                {
+                    "id": 100,
+                    "operation": "ligateFragments",
+                    "sequence": combined_seq,
+                    "name": "Final",
+                    "children": [200, 300, 400],
+                },
+                {"id": 200, "source": s1},
+                {"id": 300, "source": s2},
+                {"id": 400, "source": s3},
+            ],
+            final_sequence=combined_seq,
+        )
+
+        tree = result.history.tree
+        assert tree.root.id == 100
+        assert len(tree.root.children) == 3
+        # s1 has 2 nodes, s2 has 1, s3 has 2 → total = 1 root + 5 imported
+        assert len(tree) == 6
+
+    def test_import_id_reassignment(self):
+        """IDs don't conflict across sources."""
+        # Both sources have ID 1 as root
+        s1 = SgffObject.new(sequence="AAAA")
+        s1.ops._ensure_history()  # root gets ID 1
+
+        s2 = SgffObject.new(sequence="CCCC")
+        s2.ops._ensure_history()  # root also gets ID 1
+
+        sgff = SgffObject.new(sequence="")
+        sgff.ops.build_from_spec(
+            [
+                {
+                    "id": 10,
+                    "operation": "ligateFragments",
+                    "sequence": "AAAACCCC",
+                    "children": [20, 30],
+                },
+                {"id": 20, "source": s1},
+                {"id": 30, "source": s2},
+            ],
+            final_sequence="AAAACCCC",
+        )
+
+        tree = sgff.history.tree
+        # All IDs should be unique
+        all_ids = list(tree.nodes.keys())
+        assert len(all_ids) == len(set(all_ids))
+
+    def test_import_block11_copied(self):
+        """Block 11 snapshots from sources are preserved."""
+        s1 = SgffObject.new(sequence="ATCG")
+        s1.ops._ensure_history()
+        s1.ops.insert_fragment("ATCGATCG")
+        # s1 now has a block 11 snapshot for the old root (ID 1)
+
+        sgff = SgffObject.new(sequence="")
+        sgff.ops.build_from_spec(
+            [
+                {
+                    "id": 10,
+                    "operation": "replace",
+                    "sequence": "ATCGATCG",
+                    "children": [20],
+                },
+                {"id": 20, "source": s1},
+            ],
+            final_sequence="ATCGATCG",
+        )
+
+        # The imported node's children should have block 11 snapshots
+        assert len(sgff.history.nodes) >= 2
+
+    def test_empty_nodes_raises(self):
+        """Empty nodes list raises ValueError."""
+        sgff = SgffObject.new(sequence="ATCG")
+        with pytest.raises(ValueError, match="must not be empty"):
+            sgff.ops.build_from_spec([], final_sequence="ATCG")
+
+    def test_duplicate_id_raises(self):
+        """Duplicate node IDs raise ValueError."""
+        sgff = SgffObject.new(sequence="ATCG")
+        with pytest.raises(ValueError, match="Duplicate"):
+            sgff.ops.build_from_spec(
+                [
+                    {"id": 1, "operation": "makeDna", "sequence": "ATCG"},
+                    {"id": 1, "operation": "makeDna", "sequence": "GGCC"},
+                ],
+                final_sequence="ATCG",
+            )
+
+    def test_multiple_roots_raises(self):
+        """Multiple roots raise ValueError."""
+        sgff = SgffObject.new(sequence="ATCG")
+        with pytest.raises(ValueError, match="root"):
+            sgff.ops.build_from_spec(
+                [
+                    {"id": 1, "operation": "makeDna", "sequence": "ATCG"},
+                    {"id": 2, "operation": "makeDna", "sequence": "GGCC"},
+                ],
+                final_sequence="ATCG",
+            )
