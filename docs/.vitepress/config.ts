@@ -18,7 +18,7 @@ export default defineConfig({
       {
         text: 'v0.15.0',
         items: [
-          { text: 'Changelog', link: 'https://github.com/alexeystroganov/sgffp/releases' },
+          { text: 'Changelog', link: 'https://github.com/merv1n34k/sgffp/releases' },
           { text: 'PyPI', link: 'https://pypi.org/project/sgffp/' },
         ],
       },
@@ -51,7 +51,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/alexeystroganov/sgffp' },
+      { icon: 'github', link: 'https://github.com/merv1n34k/sgffp' },
     ],
 
     search: {
@@ -59,7 +59,7 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern: 'https://github.com/alexeystroganov/sgffp/edit/master/docs/:path',
+      pattern: 'https://github.com/merv1n34k/sgffp/edit/master/docs/:path',
     },
 
     footer: {

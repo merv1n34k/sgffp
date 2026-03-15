@@ -11,7 +11,7 @@ hero:
       link: /guide/getting-started
     - theme: alt
       text: GitHub
-      link: https://github.com/alexeystroganov/sgffp
+      link: https://github.com/merv1n34k/sgffp
 
 features:
   - title: Full-Fidelity Parsing

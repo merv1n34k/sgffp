@@ -15,7 +15,7 @@ uv add sgffp
 For development:
 
 ```bash
-git clone https://github.com/alexeystroganov/sgffp.git
+git clone https://github.com/merv1n34k/sgffp.git
 cd sgffp
 uv sync --dev
 ```
