@@ -1,44 +1,9 @@
 # SnapGene File Format Parser
 
-SnapGene File Format Parser (SGFFP for short) is a reverse-engineered parser for SnapGene DNA, RNA, and protein file formats.
+A reverse-engineered parser and writer for SnapGene `.dna` files (DNA, RNA, protein). Supports all 15 known block types with typed Python models, a chainable builder pattern, and a history operations API.
 
 > [!Important]
-> Found an unknown block type? Run `sff check your_file.dna -l` and look for `[NEW]` markers. Please report them in [#1](https://github.com/merv1n34k/sgffp/issues/1) with a dump (`sff check your_file.dna -d`). Help us decode more blocks!
-
-The parser reads SnapGene files into Python objects and exports to JSON, with a writer for creating new SnapGene files.
-
-The project aims to be a minimalistic, fast, and useful tool for molecular biologists who need to parse large libraries of SnapGene files, or for developers building SnapGene-compatible applications.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    subgraph Input
-        DNA[".dna file"]
-        Bytes["bytes/stream"]
-    end
-
-    subgraph SGFFP
-        Reader["SgffReader"]
-        Object["SgffObject"]
-        Ops["SgffOps"]
-        Writer["SgffWriter"]
-    end
-
-    subgraph Output
-        JSON["JSON"]
-        File[".dna file"]
-    end
-
-    DNA --> Reader
-    Bytes --> Reader
-    Reader --> Object
-    Object --> Ops
-    Ops --> Object
-    Object --> Writer
-    Object --> JSON
-    Writer --> File
-```
+> Found an unknown block type? Run `sff check your_file.dna -l` and look for `[NEW]` markers. Please report them in [#1](https://github.com/merv1n34k/sgffp/issues/1) with a dump (`sff check your_file.dna -d`).
 
 ## Installation
 
@@ -46,21 +11,9 @@ flowchart LR
 pip install sgffp
 ```
 
-Or with uv:
+Requires Python 3.12+.
 
-```bash
-uv add sgffp
-```
-
-For development:
-
-```bash
-git clone https://github.com/merv1n34k/sgffp.git
-cd sgffp
-uv sync --all-extras
-```
-
-### Quick Start
+## Quick Start
 
 ```python
 from sgffp import SgffReader, SgffWriter, SgffObject
@@ -87,106 +40,90 @@ SgffWriter.to_file(sgff, "new_plasmid.dna")
 
 ### History Operations
 
-```python
-# Record edits with automatic history tracking
-sgff.ops.insert_fragment("ATCGATCG")
-sgff.ops.digest("GGCC", InputSummary={"manipulation": "insert"})
+Record cloning operations with automatic history tracking:
 
-# Build an entire history tree from a specification
+```python
+sgff.ops.insert_fragment("ATCGATCG")
+sgff.ops.digest("GGCC", InputSummary={"manipulation": "digest"})
+
+# Or build an entire tree from multiple source files
+vector = SgffReader.from_file("vector.dna")
+insert = SgffReader.from_file("insert.dna")
+
 sgff.ops.build_from_spec(
     [
-        {"id": 1, "operation": "ligateFragments", "sequence": "ATCGATCG",
+        {"id": 1, "operation": "insertFragment", "sequence": "...",
          "name": "Final", "children": [2, 3]},
-        {"id": 2, "operation": "makeDna", "sequence": "ATCG"},
-        {"id": 3, "operation": "makeDna", "sequence": "ATCG"},
+        {"id": 2, "source": vector},
+        {"id": 3, "source": insert},
     ],
-    final_sequence="ATCGATCG",
+    final_sequence="...",
 )
-
-# Edit existing history nodes in place
-sgff.ops.edit_node(node_id=2, name="Renamed", sequence="GGGGCCCC")
 ```
 
-### CLI Tool
+## How It Works
+
+SnapGene files use a **TLV (Type-Length-Value)** binary format after a 19-byte header. Each block has a 1-byte type ID and a 4-byte length, with encoding varying by type: UTF-8 for sequences, XML for annotations, 2-bit GATC encoding for compressed DNA, LZMA for history, and ZTR for chromatogram traces.
+
+`SgffReader` parses blocks via the `SCHEME` dispatch table and stores them in `SgffObject.blocks` (a `Dict[int, List]`). Typed model properties (`sgff.sequence`, `sgff.features`, `sgff.history`, etc.) are lazily loaded from the blocks dict and sync changes back automatically. `SgffWriter` serializes blocks back to binary in sorted order.
+
+### Supported Block Types
+
+| ID | Block Type | Format | Model |
+|----|------------|--------|-------|
+| 0 | DNA Sequence | UTF-8 | SgffSequence |
+| 1 | Compressed DNA | 2-bit GATC | SgffSequence |
+| 5 | Primers | XML | SgffPrimerList |
+| 6 | Notes | XML | SgffNotes |
+| 7 | History Tree | LZMA + XML | SgffHistory |
+| 8 | Sequence Properties | XML | SgffProperties |
+| 10 | Features | XML | SgffFeatureList |
+| 11 | History Nodes | Binary + TLV | SgffHistory |
+| 14 | Custom Enzyme Sets | XML | |
+| 16 | Trace Container | Binary + TLV | SgffTraceList |
+| 17 | Alignable Sequences | XML | SgffAlignmentList |
+| 18 | ZTR Trace (in 16) | ZTR | SgffTrace |
+| 20 | Strand Colors | XML | |
+| 21 | Protein Sequence | UTF-8 | SgffSequence |
+| 28 | Enzyme Visibilities | XML | |
+| 29 | History Modifier | LZMA + XML | SgffHistory |
+| 30 | History Content | LZMA + TLV | SgffHistory |
+| 32 | RNA Sequence | UTF-8 | SgffSequence |
+| 34 | RNA Structure | LZMA + JSON | |
+
+Blocks 2, 3, 13 are auto-generated by SnapGene and skipped.
+
+## CLI
 
 ```bash
-uv run sff check plasmid.dna    # Inspect file blocks
-uv run sff parse plasmid.dna    # Export to JSON
-uv run sff info plasmid.dna     # Show file information
-uv run sff tree plasmid.dna     # Display edit history timeline
+sff parse plasmid.dna           # Export to JSON
+sff info plasmid.dna -v         # Show detailed file info
+sff tree plasmid.dna            # Display history timeline
+sff check plasmid.dna -l        # List block types
+sff filter plasmid.dna -k 0,10 -o minimal.dna
 ```
 
-## File Format
+All read commands accept stdin (`cat file.dna | sff info`).
 
-SnapGene uses a Type-Length-Value (TLV) binary format where each block contains:
+## Development
 
-| Field  | Size    | Description              |
-|--------|---------|--------------------------|
-| Type   | 1 byte  | Block type identifier    |
-| Length | 4 bytes | Payload size (big-endian)|
-| Data   | N bytes | Block payload            |
+```bash
+git clone https://github.com/merv1n34k/sgffp.git
+cd sgffp
+uv sync --dev
 
-Data encoding varies by block type: UTF-8 for sequences, XML for annotations, 2-bit encoding for compressed DNA (GATC → 00/01/10/11), and LZMA compression for history blocks.
+# Run tests
+uv run pytest tests/ -v
 
-## Block Types
+# Docs (VitePress)
+cd docs && bun install && bun run docs:dev
+```
 
-All known SnapGene block types and their encoding formats:
+## Documentation
 
-| ID | Block Type           | Format        | ID | Block Type           | Format        |
-|----|----------------------|---------------|----|----------------------|---------------|
-| 0  | DNA Sequence         | UTF-8         | 17 | Alignable Sequences  | XML           |
-| 1  | Compressed DNA       | 2-bit GATC    | 18 | Sequence Trace       | ZTR           |
-| 5  | Primers              | XML           | 20 | Strand Colors        | XML           |
-| 6  | Notes                | XML           | 21 | Protein Sequence     | UTF-8         |
-| 7  | History Tree         | LZMA + XML    | 28 | Enzyme Visibilities  | XML           |
-| 8  | Sequence Properties  | XML           | 29 | History Modifier     | LZMA + XML    |
-| 10 | Features             | XML           | 30 | History Content      | LZMA + TLV    |
-| 11 | History Nodes        | Binary + TLV  | 32 | RNA Sequence         | UTF-8         |
-| 14 | Custom Enzyme Sets   | XML           | 34 | RNA Structure        | LZMA + JSON   |
-| 16 | Trace Container      | Binary + TLV  |    |                      |               |
+Full guides, API reference, CLI reference, and binary format specification:
 
-Block 18 (ZTR trace) only appears inside block 16 containers. Blocks 2, 3, 13 (enzyme maps and display settings) are auto-generated by SnapGene and not parsed. For a complete binary format reference, see [SNAPGENE_FORMAT_SPEC.md](SNAPGENE_FORMAT_SPEC.md).
-
-## Supported Block Types
-
-The table below shows which block types can be read from and written to SnapGene files. Blocks marked with a Model have typed Python classes for convenient access (e.g., `sgff.sequence`, `sgff.features`, `sgff.history`).
-
-| ID | Block Type                    | Read | Write | Model |
-|----|-------------------------------|------|-------|-------|
-| 0  | DNA Sequence                  | +    | +     | +     |
-| 1  | Compressed DNA                | +    | +     | +     |
-| 5  | Primers (XML)                 | +    | +     | +     |
-| 6  | Notes (XML)                   | +    | +     | +     |
-| 7  | History Tree (XML)            | +    | +     | +     |
-| 8  | Sequence Properties (XML)     | +    | +     | +     |
-| 10 | Features (XML)                | +    | +     | +     |
-| 11 | History Nodes                 | +    | +     | +     |
-| 14 | Custom Enzyme Sets (XML)      | +    | +     |       |
-| 16 | Trace Container               | +    | +     | +     |
-| 17 | Alignable Sequences (XML)     | +    | +     | +     |
-| 18 | ZTR Trace (in block 16)       | +    | +     | +     |
-| 20 | Strand Colors (XML)           | +    | +     |       |
-| 21 | Protein Sequence              | +    | +     | +     |
-| 28 | Enzyme Visibilities (XML)     | +    | +     |       |
-| 29 | History Modifier (XML)        | +    | +     | +     |
-| 30 | History Content (Nested)      | +    | +     | +     |
-| 32 | RNA Sequence                  | +    | +     | +     |
-| 34 | RNA Structure (LZMA JSON)     | +    | +     |       |
-
-
-## Roadmap
-
-- [x] Improve SGFF parsing, unify TLV strategy
-- [x] Understand whole file structure
-- [x] Correctly parse into readable format from all common blocks
-- [x] Create writer for supported block types
-- [x] Add comprehensive test suite (380 tests)
-- [x] Parse XML into pure JSON format
-- [x] Add write support for history blocks (LZMA compression)
-- [x] Add typed model classes for easy data access
-- [x] De novo file creation with builder pattern
-- [x] History operations API (`SgffOps`)
-- [ ] Documentation improvements
+**[merv1n34k.github.io/sgffp](https://merv1n34k.github.io/sgffp/)**
 
 ## Acknowledgments
 
