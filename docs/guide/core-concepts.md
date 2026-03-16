@@ -13,7 +13,7 @@ from sgffp import SgffReader
 sgff = SgffReader.from_file("plasmid.dna")
 
 # Header info
-sgff.cookie.type_of_sequence  # 1 (DNA), 2 (RNA), 3 (Protein)
+sgff.cookie.type_of_sequence  # 1 (DNA), 2 (Protein), 7 (RNA)
 sgff.cookie.export_version    # e.g. 15
 sgff.cookie.import_version    # e.g. 19
 

@@ -39,7 +39,7 @@ if sgff.has_history:
         print(f"  [{node.id}] {node.name}")
 
     # Access sequence snapshot at a specific node
-    seq = sgff.history.get_sequence_at(node_id=1)
+    seq = sgff.history.get_sequence_at(index=1)
 ```
 
 ## SgffOps API

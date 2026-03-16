@@ -24,8 +24,8 @@ Every `.dna` file starts with a fixed 19-byte header:
 | Value | Meaning |
 |-------|---------|
 | 1 | DNA |
-| 2 | RNA |
-| 3 | Protein |
+| 2 | Protein |
+| 7 | RNA |
 
 ## TLV Block Format
 
@@ -254,15 +254,15 @@ Annotation features with segment ranges, qualifiers, and strand mapping.
 
 **Parsed format** (after sgffp processing):
 
-```python
+```json
 {
     "features": [
         {
             "name": "GFP",
             "type": "CDS",
             "strand": "+",
-            "start": 100,   # 0-based (range "101" - 1)
-            "end": 820,     # 1-based end
+            "start": 100,
+            "end": 820,
             "color": "#00ff00",
             "segments": [{"range": "101-820", "color": "#00ff00"}],
             "qualifiers": {"label": "GFP", "note": "Green fluorescent protein"}
@@ -270,6 +270,8 @@ Annotation features with segment ranges, qualifiers, and strand mapping.
     ]
 }
 ```
+
+`start` is 0-based (XML range `"101"` minus 1), `end` is 1-based.
 
 ### Block 11 — History Nodes (Binary)
 

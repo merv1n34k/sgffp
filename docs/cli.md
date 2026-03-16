@@ -9,8 +9,6 @@ sff <command> --help   # command-specific help
 
 All read commands accept stdin by default — omit the input argument or pass `-` explicitly.
 
----
-
 ## `sff parse`
 
 Export a SnapGene file to JSON.

@@ -103,7 +103,7 @@ from sgffp import Cookie
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `type_of_sequence` | `int` | `1` | 1=DNA, 2=RNA, 3=Protein |
+| `type_of_sequence` | `int` | `1` | 1=DNA, 2=Protein, 7=RNA |
 | `export_version` | `int` | `15` | SnapGene export version |
 | `import_version` | `int` | `19` | SnapGene import version |
 
