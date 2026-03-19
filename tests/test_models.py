@@ -15,6 +15,7 @@ from sgffp.models import (
     SgffHistoryOligo,
     SgffInputSummary,
     HistoryOperation,
+    SgffBindingSite,
     SgffPrimer,
     SgffPrimerList,
     SgffNotes,
@@ -980,9 +981,70 @@ class TestSgffTraceList:
         assert "count=2" in repr(traces)
 
 
+class TestSgffBindingSite:
+    def test_from_dict_basic(self):
+        """Parse a basic BindingSite dict"""
+        data = {
+            "location": "2252-2290",
+            "boundStrand": "1",
+            "annealedBases": "GTTGGGGTCTTTGCTCAG",
+            "meltingTemperature": "71",
+            "Component": {"hybridizedRange": "2252-2290", "bases": "GTTGGG"},
+        }
+        bs = SgffBindingSite.from_dict(data)
+        assert bs.start == 2251  # 0-based
+        assert bs.end == 2290
+        assert bs.bound_strand == "-"
+        assert bs.annealed_bases == "GTTGGGGTCTTTGCTCAG"
+        assert bs.melting_temperature == 71.0
+        assert bs.simplified is False
+        assert "Component" in bs.extras
+
+    def test_from_dict_simplified(self):
+        """Simplified flag is parsed"""
+        data = {
+            "simplified": "1",
+            "location": "100-200",
+            "boundStrand": "0",
+        }
+        bs = SgffBindingSite.from_dict(data)
+        assert bs.simplified is True
+        assert bs.bound_strand == "+"
+
+    def test_roundtrip(self):
+        """to_dict reverses from_dict"""
+        data = {
+            "location": "2252-2290",
+            "boundStrand": "1",
+            "annealedBases": "GTTGGG",
+            "meltingTemperature": "71",
+            "Component": {"hybridizedRange": "2252-2290", "bases": "GTTGGG"},
+        }
+        bs = SgffBindingSite.from_dict(data)
+        result = bs.to_dict()
+        assert result["location"] == "2252-2290"
+        assert result["boundStrand"] == "1"
+        assert result["annealedBases"] == "GTTGGG"
+        assert result["meltingTemperature"] == "71"
+        assert result["Component"]["hybridizedRange"] == "2252-2290"
+
+    def test_simplified_roundtrip(self):
+        """Simplified flag survives roundtrip"""
+        data = {"simplified": "1", "location": "100-200", "boundStrand": "0"}
+        bs = SgffBindingSite.from_dict(data)
+        result = bs.to_dict()
+        assert result["simplified"] == "1"
+
+    def test_forward_strand(self):
+        """boundStrand 0 maps to +"""
+        bs = SgffBindingSite.from_dict({"location": "1-10", "boundStrand": "0"})
+        assert bs.bound_strand == "+"
+        assert bs.to_dict()["boundStrand"] == "0"
+
+
 class TestSgffPrimerExtras:
     def test_primer_extras_preserved(self):
-        """Unknown attrs survive roundtrip via to_dict()"""
+        """Unknown attrs survive roundtrip; BindingSite is now parsed, not in extras"""
         data = {
             "name": "FWD",
             "sequence": "ATCG",
@@ -990,13 +1052,17 @@ class TestSgffPrimerExtras:
             "description": "Forward primer",
             "color": "#FF0000",
             "dateAdded": "2024-01-01",
-            "BindingSite": {"location": "1-20", "boundStrand": "top"},
+            "BindingSite": {"location": "1-20", "boundStrand": "0"},
         }
         primer = SgffPrimer.from_dict(data)
         assert primer.name == "FWD"
         assert primer.extras["recentID"] == "5"
         assert primer.extras["color"] == "#FF0000"
-        assert "BindingSite" in primer.extras
+        # BindingSite is now parsed into binding_sites, NOT in extras
+        assert "BindingSite" not in primer.extras
+        assert len(primer.binding_sites) == 1
+        assert primer.binding_sites[0].start == 0
+        assert primer.binding_sites[0].end == 20
 
         result = primer.to_dict()
         assert result["name"] == "FWD"
@@ -1006,16 +1072,67 @@ class TestSgffPrimerExtras:
         assert result["BindingSite"]["location"] == "1-20"
 
     def test_primer_clear_binding_sites(self):
-        """clear_binding_sites removes BindingSite from extras"""
+        """clear_binding_sites clears the binding_sites list"""
         data = {
             "name": "FWD",
             "sequence": "ATCG",
-            "BindingSite": {"location": "1-20"},
+            "BindingSite": {"location": "1-20", "boundStrand": "0"},
         }
         primer = SgffPrimer.from_dict(data)
+        assert len(primer.binding_sites) == 1
         primer.clear_binding_sites()
-        assert "BindingSite" not in primer.extras
+        assert len(primer.binding_sites) == 0
         assert "BindingSite" not in primer.to_dict()
+
+    def test_primer_computed_properties(self):
+        """bind_position, bind_strand, melting_temperature from first non-simplified site"""
+        data = {
+            "name": "P1",
+            "sequence": "ATCG",
+            "BindingSite": [
+                {
+                    "location": "100-120",
+                    "boundStrand": "1",
+                    "meltingTemperature": "65",
+                },
+                {
+                    "simplified": "1",
+                    "location": "100-120",
+                    "boundStrand": "1",
+                    "meltingTemperature": "65",
+                },
+            ],
+        }
+        primer = SgffPrimer.from_dict(data)
+        assert primer.bind_position == 99  # 0-based
+        assert primer.bind_strand == "-"
+        assert primer.melting_temperature == 65.0
+
+    def test_primer_no_binding_sites_defaults(self):
+        """Without binding sites, computed properties return defaults"""
+        primer = SgffPrimer(name="P1", sequence="ATCG")
+        assert primer.bind_position is None
+        assert primer.bind_strand == "+"
+        assert primer.melting_temperature is None
+
+    def test_primer_multiple_sites_roundtrip(self):
+        """Multiple BindingSite elements survive roundtrip"""
+        data = {
+            "name": "P1",
+            "sequence": "ATCG",
+            "BindingSite": [
+                {"location": "100-120", "boundStrand": "0"},
+                {"location": "500-520", "boundStrand": "1", "simplified": "1"},
+            ],
+        }
+        primer = SgffPrimer.from_dict(data)
+        assert len(primer.binding_sites) == 2
+
+        result = primer.to_dict()
+        assert isinstance(result["BindingSite"], list)
+        assert len(result["BindingSite"]) == 2
+        assert result["BindingSite"][0]["location"] == "100-120"
+        assert result["BindingSite"][1]["location"] == "500-520"
 
     def test_primer_list_wrapper_extras(self):
         """Wrapper-level extras (HybridizationParams, nextValidID) preserved"""

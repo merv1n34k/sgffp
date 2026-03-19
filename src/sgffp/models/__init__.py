@@ -15,7 +15,7 @@ from .history import (
     SgffInputSummary,
     HistoryOperation,
 )
-from .primer import SgffPrimer, SgffPrimerList
+from .primer import SgffBindingSite, SgffPrimer, SgffPrimerList
 from .notes import SgffNotes
 from .properties import SgffProperties
 from .alignment import SgffAlignment, SgffAlignmentList
@@ -37,6 +37,7 @@ __all__ = [
     "SgffHistoryOligo",
     "SgffInputSummary",
     "HistoryOperation",
+    "SgffBindingSite",
     "SgffPrimer",
     "SgffPrimerList",
     "SgffNotes",

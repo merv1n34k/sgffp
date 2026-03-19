@@ -133,14 +133,41 @@ from sgffp import SgffPrimer
 |-------|------|---------|-------------|
 | `name` | `str` | `""` | Primer name |
 | `sequence` | `str` | `""` | Primer sequence |
-| `bind_position` | `int \| None` | `None` | Binding site position |
-| `bind_strand` | `str` | `"+"` | Binding strand |
+| `binding_sites` | `List[SgffBindingSite]` | `[]` | Parsed binding site data |
 | `extras` | `Dict` | `{}` | Unmodeled XML attributes |
+
+#### Computed Properties (backward compatible)
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `bind_position` | `int \| None` | Start position of first non-simplified binding site (0-based) |
+| `bind_strand` | `str` | Strand of first non-simplified binding site (`"+"` or `"-"`) |
+| `melting_temperature` | `float \| None` | Melting temperature of first non-simplified binding site |
 
 #### Methods
 
 | Method | Description |
 |--------|-------------|
-| `clear_binding_sites()` | Remove cached binding site data so SnapGene recalculates it |
+| `clear_binding_sites()` | Remove all binding site data so SnapGene recalculates it |
 | `from_dict(data)` | Create from parsed dict |
 | `to_dict()` | Serialize to dict |
+
+### SgffBindingSite
+
+A single primer binding site on the target sequence. SnapGene stores both detailed and simplified versions of each site.
+
+```python
+from sgffp import SgffBindingSite
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `start` | `int` | `0` | Start position (0-based) |
+| `end` | `int` | `0` | End position (1-based) |
+| `bound_strand` | `str` | `"+"` | `"+"` (forward/top) or `"-"` (reverse/bottom) |
+| `annealed_bases` | `str` | `""` | Annealed base sequence |
+| `melting_temperature` | `float \| None` | `None` | Melting temperature in °C |
+| `simplified` | `bool` | `False` | Whether this is a simplified binding site |
+| `extras` | `Dict` | `{}` | Unmodeled data (e.g., `Component` elements) |
+
+Methods: `from_dict(data)`, `to_dict()`.

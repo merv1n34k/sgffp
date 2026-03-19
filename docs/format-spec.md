@@ -107,14 +107,24 @@ XML block parsed by `xmltodict`. Top-level element: `<Primers>`.
     showAdditionalFivePrimeMatches="1"
     minimumFivePrimeAnnealing="15"
   />
-  <Primer
-    name="Forward"
-    sequence="ATGCATGCATGC"
-    bindingSite="100"
-    strand="+"
-  />
+  <Primer name="Forward" sequence="ATGCATGCATGC">
+    <BindingSite
+      location="100-112"
+      boundStrand="0"
+      annealedBases="ATGCATGCATGC"
+      meltingTemperature="36"
+    >
+      <Component hybridizedRange="100-112" bases="ATGCATGCATGC"/>
+    </BindingSite>
+    <BindingSite simplified="1" location="100-112" boundStrand="0"
+      annealedBases="ATGCATGCATGC" meltingTemperature="36">
+      <Component hybridizedRange="100-112" bases="ATGCATGCATGC"/>
+    </BindingSite>
+  </Primer>
 </Primers>
 ```
+
+Each `<Primer>` can contain multiple `<BindingSite>` child elements. SnapGene generates both detailed and simplified (attribute `simplified="1"`) versions. The `boundStrand` attribute is `"0"` for forward/top and `"1"` for reverse/bottom. The `location` uses 1-based coordinates.
 
 ### Block 6 — Notes (XML)
 

@@ -11,6 +11,7 @@ from .models import (
     SgffFeatureList,
     SgffSegment,
     SgffHistory,
+    SgffBindingSite,
     SgffPrimer,
     SgffPrimerList,
     SgffNotes,
@@ -315,11 +316,15 @@ class SgffObject:
         bind_strand: str = "+",
     ) -> "SgffObject":
         """Add a primer. Returns self for chaining."""
+        binding_sites = []
+        if bind_position is not None:
+            binding_sites.append(
+                SgffBindingSite(start=bind_position, bound_strand=bind_strand)
+            )
         primer = SgffPrimer(
             name=name,
             sequence=sequence,
-            bind_position=bind_position,
-            bind_strand=bind_strand,
+            binding_sites=binding_sites,
         )
         self.primers.add(primer)
         return self
