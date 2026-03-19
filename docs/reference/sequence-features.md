@@ -81,6 +81,7 @@ from sgffp import SgffFeature, SgffSegment
 | `segments` | `List[SgffSegment]` | `[]` | Location ranges |
 | `qualifiers` | `Dict[str, Any]` | `{}` | Parsed qualifiers |
 | `color` | `str \| None` | `None` | Color from first segment |
+| `reading_frame` | `int \| None` | `None` | Reading frame offset (-3…-1, 1…3) |
 | `extras` | `Dict` | `{}` | Unmodeled XML attributes |
 | `raw_qualifiers` | `List \| None` | `None` | Raw qualifier dicts for lossless roundtrip |
 
@@ -103,6 +104,8 @@ Single feature location range.
 | `start` | `int` | | Start position (0-based) |
 | `end` | `int` | | End position (1-based) |
 | `color` | `str \| None` | `None` | Hex color (e.g., `"#00ff00"`) |
+| `type` | `str` | `"standard"` | Segment type: `"standard"` or `"gap"` |
+| `translated` | `bool` | `False` | Whether this segment is translated |
 | `extras` | `Dict` | `{}` | Unmodeled XML attributes |
 
 Methods: `from_dict(data)`, `to_dict()`.

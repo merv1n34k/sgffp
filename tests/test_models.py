@@ -1320,11 +1320,35 @@ class TestSgffFeatureExtras:
         }
         feature = SgffFeature.from_dict(data)
         assert feature.extras["recentID"] == "5"
-        assert feature.extras["readingFrame"] == "1"
+        assert feature.reading_frame == 1
+        assert "readingFrame" not in feature.extras
 
         result = feature.to_dict()
         assert result["extras"]["recentID"] == "5"
         assert result["extras"]["translationMW"] == "26800"
+        assert result["extras"]["readingFrame"] == "1"
+
+    def test_reading_frame_none_by_default(self):
+        """reading_frame is None when not present"""
+        feature = SgffFeature.from_dict({"name": "X", "type": "gene"})
+        assert feature.reading_frame is None
+
+        result = feature.to_dict()
+        assert "readingFrame" not in result["extras"]
+
+    def test_reading_frame_negative_roundtrip(self):
+        """Negative reading frame roundtrips correctly"""
+        data = {
+            "name": "CDS1",
+            "type": "CDS",
+            "strand": "-",
+            "extras": {"readingFrame": "-1"},
+        }
+        feature = SgffFeature.from_dict(data)
+        assert feature.reading_frame == -1
+
+        result = feature.to_dict()
+        assert result["extras"]["readingFrame"] == "-1"
 
     def test_feature_raw_qualifiers_preserved(self):
         """raw_qualifiers survive roundtrip"""
@@ -1358,15 +1382,52 @@ class TestSgffSegmentExtras:
             "translated": "1",
         }
         segment = SgffSegment.from_dict(data)
-        assert segment.extras["type"] == "standard"
+        assert segment.type == "standard"
+        assert segment.translated is True
         assert segment.extras["name"] == "Seg1"
-        assert segment.extras["translated"] == "1"
+        assert "type" not in segment.extras
+        assert "translated" not in segment.extras
 
         result = segment.to_dict()
         assert result["type"] == "standard"
+        assert result["translated"] == "1"
         assert result["name"] == "Seg1"
         assert result["range"] == "1-100"
         assert result["color"] == "#FF0000"
+
+    def test_segment_defaults(self):
+        """Default type is standard, translated is False"""
+        segment = SgffSegment.from_dict({"range": "1-50"})
+        assert segment.type == "standard"
+        assert segment.translated is False
+
+        result = segment.to_dict()
+        assert result["type"] == "standard"
+        assert "translated" not in result
+
+    def test_segment_gap_type(self):
+        """Gap segment type roundtrips"""
+        segment = SgffSegment.from_dict({"range": "1-10", "type": "gap"})
+        assert segment.type == "gap"
+        assert segment.translated is False
+
+        result = segment.to_dict()
+        assert result["type"] == "gap"
+        assert "translated" not in result
+
+    def test_segment_translated_roundtrip(self):
+        """Translated flag roundtrips as '1'"""
+        segment = SgffSegment.from_dict({
+            "range": "1-100",
+            "type": "standard",
+            "translated": "1",
+        })
+        assert segment.translated is True
+        assert segment.type == "standard"
+
+        result = segment.to_dict()
+        assert result["translated"] == "1"
+        assert result["type"] == "standard"
 
 
 class TestSgffFeatureListExtras:

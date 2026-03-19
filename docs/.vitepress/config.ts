@@ -44,6 +44,7 @@ export default defineConfig({
             { text: 'Sequence & Features', link: '/reference/sequence-features' },
             { text: 'History', link: '/reference/history' },
             { text: 'Other Models', link: '/reference/other-models' },
+            { text: 'Extras', link: '/reference/extras' },
             { text: 'Internals', link: '/reference/internals' },
           ],
         },

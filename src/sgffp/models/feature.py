@@ -7,7 +7,7 @@ from typing import Dict, List, Any, Optional
 
 from .base import SgffListModel
 
-_SEGMENT_KNOWN_KEYS = frozenset({"range", "color"})
+_SEGMENT_KNOWN_KEYS = frozenset({"range", "color", "type", "translated"})
 
 
 @dataclass
@@ -17,6 +17,8 @@ class SgffSegment:
     start: int
     end: int
     color: Optional[str] = None
+    type: str = "standard"
+    translated: bool = False
     extras: Dict = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -28,6 +30,8 @@ class SgffSegment:
             start=parts[0] - 1,
             end=parts[1] if len(parts) > 1 else parts[0],
             color=data.get("color"),
+            type=data.get("type", "standard"),
+            translated=data.get("translated") == "1",
             extras=extras,
         )
 
@@ -36,6 +40,9 @@ class SgffSegment:
         result["range"] = f"{self.start + 1}-{self.end}"
         if self.color:
             result["color"] = self.color
+        result["type"] = self.type
+        if self.translated:
+            result["translated"] = "1"
         return result
 
 
@@ -49,6 +56,7 @@ class SgffFeature:
     segments: List[SgffSegment] = field(default_factory=list)
     qualifiers: Dict[str, Any] = field(default_factory=dict)
     color: Optional[str] = None
+    reading_frame: Optional[int] = None
     extras: Dict = field(default_factory=dict, repr=False)
     raw_qualifiers: Optional[List] = field(default=None, repr=False)
 
@@ -74,6 +82,10 @@ class SgffFeature:
         for seg in data.get("segments", []):
             segments.append(SgffSegment.from_dict(seg))
 
+        extras = dict(data.get("extras", {}))
+        reading_frame_str = extras.pop("readingFrame", None)
+        reading_frame = int(reading_frame_str) if reading_frame_str is not None else None
+
         return cls(
             name=data.get("name", ""),
             type=data.get("type", ""),
@@ -81,11 +93,15 @@ class SgffFeature:
             segments=segments,
             qualifiers=data.get("qualifiers", {}),
             color=data.get("color"),
-            extras=data.get("extras", {}),
+            reading_frame=reading_frame,
+            extras=extras,
             raw_qualifiers=data.get("raw_qualifiers"),
         )
 
     def to_dict(self) -> Dict:
+        extras = dict(self.extras)
+        if self.reading_frame is not None:
+            extras["readingFrame"] = str(self.reading_frame)
         return {
             "name": self.name,
             "type": self.type,
@@ -93,7 +109,7 @@ class SgffFeature:
             "segments": [s.to_dict() for s in self.segments],
             "qualifiers": self.qualifiers,
             "color": self.color,
-            "extras": self.extras,
+            "extras": extras,
             "raw_qualifiers": self.raw_qualifiers,
         }
 
