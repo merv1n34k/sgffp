@@ -16,7 +16,7 @@ export default defineConfig({
       { text: 'CLI', link: '/cli' },
       { text: 'Format Spec', link: '/format-spec' },
       {
-        text: 'v0.15.0',
+        text: 'v0.15.1',
         items: [
           { text: 'Changelog', link: 'https://github.com/merv1n34k/sgffp/releases' },
           { text: 'PyPI', link: 'https://pypi.org/project/sgffp/' },
