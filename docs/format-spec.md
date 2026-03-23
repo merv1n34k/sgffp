@@ -83,7 +83,7 @@ Uncompressed DNA sequence with property flags.
 | 10 | 2 | Reserved (always 0x0000) |
 | 12 | 2 | `header_seq_length` (big-endian uint16) — matches `uncompressed_length` |
 
-**2-bit encoding** (2 bits per base, 4 bases per byte, MSB first):
+**2-bit encoding** (2 bits per base, 4 bases per byte, MSB first for full bytes):
 
 | Bits | Base |
 |------|------|
@@ -93,6 +93,8 @@ Uncompressed DNA sequence with property flags.
 | 11 | C |
 
 Total bytes = ceil(uncompressed_length * 2 / 8).
+
+When the final byte holds fewer than 4 bases, SnapGene right-aligns that partial tail in the low bits of the byte. For example, a 3-base tail uses bit pairs at offsets 4, 2, and 0.
 
 ### Block 5 — Primers (XML)
 

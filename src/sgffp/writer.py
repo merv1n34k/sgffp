@@ -209,11 +209,11 @@ class SgffWriter:
         result = bytearray()
 
         for i in range(0, len(sequence), 4):
+            chunk = sequence[i : i + 4]
             byte = 0
-            for j, shift in enumerate([6, 4, 2, 0]):
-                if i + j < len(sequence):
-                    base = sequence[i + j].upper()
-                    byte |= base_map.get(base, 0) << shift
+            shifts = [6, 4, 2, 0] if len(chunk) == 4 else [6, 4, 2, 0][-len(chunk) :]
+            for base, shift in zip(chunk, shifts):
+                byte |= base_map.get(base.upper(), 0) << shift
             result.append(byte)
 
         return bytes(result)

@@ -56,10 +56,17 @@ class TestOctetToDna:
         assert result == b"GATC"
 
     def test_octet_to_dna_partial(self):
-        """Decode partial byte (fewer bases than byte holds)"""
-        raw = bytes([0b00011011])
+        """Decode a right-aligned partial tail byte."""
+        # "GA" = G(00), A(01) = 0b00000001 (right-aligned)
+        raw = bytes([0b00000001])
         result = octet_to_dna(raw, 2)
         assert result == b"GA"
+
+    def test_octet_to_dna_partial_three_bases(self):
+        """Decode three bases from the low 6 bits of the final byte."""
+        raw = bytes([0b00101100])
+        result = octet_to_dna(raw, 3)
+        assert result == b"TCG"
 
     def test_octet_to_dna_multiple_bytes(self):
         """Decode multiple bytes"""
