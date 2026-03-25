@@ -4,7 +4,7 @@ version = "0.15.1"
 description = "Read, write, and manipulate SnapGene files (.dna, .rna, .prot)"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 authors = [{ name = "Oleksii Stroganov", email = "merv1n@proton.me" }]
 keywords = ["snapgene", "dna", "rna", "protein", "bioinformatics", "parser", "molecular-biology"]
 classifiers = [
@@ -13,6 +13,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.10",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: File Formats",
 ]
@@ -44,6 +46,6 @@ pythonpath = ["src"]
 
 [dependency-groups]
 dev = [
-    "ipython>=9.9.0",
+    "ipython>=8.18.0",
     "ruff>=0.15.1",
 ]
