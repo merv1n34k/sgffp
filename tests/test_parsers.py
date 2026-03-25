@@ -303,6 +303,22 @@ class TestParseFeatures:
         assert result["features"][0]["name"] == "test"
         assert result["features"][0]["type"] == "gene"
 
+    def test_parse_features_origin_spanning(self):
+        """Parse origin spanning feature"""
+        xml = b"""<Features>
+            <Feature name="test" type="gene" directionality="1">
+                <Segment range="100-25" color="#FF0000"/>
+            </Feature>
+        </Features>"""
+        result = parse_features(xml)
+        assert result is not None
+        assert "features" in result
+        assert len(result["features"]) == 1
+        assert result["features"][0]["name"] == "test"
+        assert result["features"][0]["type"] == "gene"
+        assert result["features"][0]["start"] == 99
+        assert result["features"][0]["end"] == 25
+
     def test_parse_features_multiple(self):
         """Parse multiple features"""
         xml = b"""<Features>

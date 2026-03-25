@@ -1370,6 +1370,29 @@ class TestSgffFeatureExtras:
         result = feature.to_dict()
         assert result["raw_qualifiers"] == raw_quals
 
+    def test_feature_origin_spanning_roundtrip(self):
+        """Origin spanning feature roundtrips correctly"""
+        data = {
+            "name": "test",
+            "type": "gene",
+            "strand": "+",
+            "qualifiers": {},
+            "raw_qualifiers": None,
+            "color": None,
+            "extras": {},
+            "segments": [{"range": "135-7", "color": "#FF0000", "type": "standard"}],
+        }
+        feature = SgffFeature.from_dict(data)
+        assert feature.start == 134
+        assert feature.end == 7
+        assert feature.type == "gene"
+        assert feature.name == "test"
+        assert feature.segments[0].start == 134
+        assert feature.segments[0].end == 7
+        assert feature.length(141) == 14
+        result = feature.to_dict()
+        assert result == data
+
 
 class TestSgffSegmentExtras:
     def test_segment_extras_preserved(self):
