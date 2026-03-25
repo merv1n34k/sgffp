@@ -89,11 +89,16 @@ from sgffp import SgffFeature, SgffSegment
 
 | Property | Type | Description |
 |----------|------|-------------|
-| `start` | `int` | Minimum start across all segments (0-based) |
-| `end` | `int` | Maximum end across all segments (1-based) |
-| `length` | `int` | `end - start` |
+| `start` | `int` | First segment start (0-based) |
+| `end` | `int` | Last segment end (1-based) |
 
-Methods: `from_dict(data)`, `to_dict()`.
+#### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `length(seq_len=None)` | `int` | Feature length. For origin-spanning features on circular sequences, pass `seq_len` to get the correct wrapped length. |
+| `from_dict(data)` | `SgffFeature` | Create from dict |
+| `to_dict()` | `Dict` | Serialize to dict |
 
 ### SgffSegment
 
