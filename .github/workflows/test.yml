@@ -23,3 +23,18 @@ jobs:
 
       - name: Run tests
         run: uv run --all-extras pytest
+
+  fresh-install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.10"
+
+      - name: Run tests with unpinned deps
+        run: |
+          rm -f uv.lock
+          uv run --all-extras pytest
