@@ -72,8 +72,8 @@ class SgffFeature:
             return 0
         return self.segments[-1].end
 
-    def length(self, seq_len) -> int:
-        if self.end > self.start:
+    def length(self, seq_len=None) -> int:
+        if self.end >= self.start:
             return self.end - self.start
         return seq_len - self.start + self.end
 
