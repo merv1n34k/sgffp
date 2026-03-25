@@ -317,11 +317,11 @@ class TestDnaToOctet:
         assert result == bytes([0b11111111])
 
     def test_dna_to_octet_padding(self):
-        """Odd-length sequences handled"""
+        """Partial tail byte is right-aligned"""
         writer = SgffWriter(BytesIO())
-        # "AT" = A(01), T(10) = 0b01100000 (padded with zeros)
+        # "AT" = A(01), T(10) = 0b00000110 (right-aligned)
         result = writer._dna_to_octet("AT")
-        assert result == bytes([0b01100000])
+        assert result == bytes([0b00000110])
 
     def test_dna_to_octet_unknown_base(self):
         """Unknown bases default to G (0)"""
@@ -335,6 +335,12 @@ class TestDnaToOctet:
         writer = SgffWriter(BytesIO())
         result = writer._dna_to_octet("gatc")
         assert result == bytes([0b00011011])
+
+    def test_dna_to_octet_partial_tail_is_right_aligned(self):
+        """Final partial byte is packed into the low bits."""
+        writer = SgffWriter(BytesIO())
+        result = writer._dna_to_octet("TCG")
+        assert result == bytes([0b00101100])
 
 
 # =============================================================================

@@ -56,7 +56,11 @@ def octet_to_dna(raw_data: bytes, base_count: int) -> bytes:
     bases = b"GATC"
     result = bytearray()
     for byte in raw_data:
-        for shift in [6, 4, 2, 0]:
+        remaining = base_count - len(result)
+        if remaining <= 0:
+            break
+        shifts = [6, 4, 2, 0] if remaining >= 4 else [6, 4, 2, 0][-remaining:]
+        for shift in shifts:
             if len(result) < base_count:
                 result.append(bases[(byte >> shift) & 3])
     return bytes(result[:base_count])
