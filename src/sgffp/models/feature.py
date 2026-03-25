@@ -24,7 +24,7 @@ class SgffSegment:
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffSegment":
         range_str = data.get("range", "1-1")
-        parts = sorted(int(x) for x in range_str.split("-"))
+        parts = [int(x) for x in range_str.split("-")]
         extras = {k: v for k, v in data.items() if k not in _SEGMENT_KNOWN_KEYS}
         return cls(
             start=parts[0] - 1,
@@ -64,17 +64,18 @@ class SgffFeature:
     def start(self) -> int:
         if not self.segments:
             return 0
-        return min(s.start for s in self.segments)
+        return self.segments[0].start
 
     @property
     def end(self) -> int:
         if not self.segments:
             return 0
-        return max(s.end for s in self.segments)
+        return self.segments[-1].end
 
-    @property
-    def length(self) -> int:
-        return self.end - self.start
+    def length(self, seq_len) -> int:
+        if self.end > self.start:
+            return self.end - self.start
+        return seq_len - self.start + self.end
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffFeature":

@@ -224,7 +224,7 @@ def parse_features(data: bytes) -> Optional[Dict]:
         ranges = []
         for seg in segments:
             if "range" in seg:
-                r = sorted(int(x) for x in seg["range"].split("-"))
+                r = [int(x) for x in seg["range"].split("-")]
                 ranges.append(r)
 
         # Parse qualifiers
@@ -247,8 +247,8 @@ def parse_features(data: bytes) -> Optional[Dict]:
                 "name": feature.get("name", ""),
                 "type": feature.get("type", ""),
                 "strand": STRAND_MAP.get(feature.get("directionality", "0"), "."),
-                "start": min(r[0] - 1 for r in ranges) if ranges else 0,
-                "end": max(r[1] for r in ranges) if ranges else 0,
+                "start": ranges[0][0] - 1 if ranges else 0,
+                "end": ranges[-1][1] if ranges else 0,
                 "color": color,
                 "segments": segments,
                 "qualifiers": qualifiers,
