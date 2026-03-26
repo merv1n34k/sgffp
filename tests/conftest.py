@@ -49,6 +49,12 @@ def pib2_dna(data_dir):
 
 
 @pytest.fixture
+def circularize_only_dna(data_dir):
+    """Path to circularize_only.dna file"""
+    return data_dir / "circularize_only.dna"
+
+
+@pytest.fixture
 def all_test_files(test_dna, test2_dna, test3_dna, test_rna, test_prot):
     """All test files for parametrized tests"""
     return [test_dna, test2_dna, test3_dna, test_rna, test_prot]

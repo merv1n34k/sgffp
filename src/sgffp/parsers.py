@@ -474,12 +474,26 @@ def parse_history_node(data: bytes) -> Dict[str, Any]:
     node["sequence_type"] = seq_type
     offset += 1
 
-    # Type 29: modifier only
+    # Type 29: LZMA/XZ compressed modifier blob + nested TLV blocks
     if seq_type == 29:
-        if offset < len(data):
-            nested = parse_blocks(BytesIO(data[offset:]))
-            if nested:
-                node["node_info"] = nested
+        if offset + 4 <= len(data):
+            # Read 4-byte length of the XZ-compressed modifier XML
+            modifier_length = struct.unpack(">I", data[offset : offset + 4])[0]
+            offset += 4
+
+            modifier_data = data[offset : offset + modifier_length]
+            offset += modifier_length
+
+            # Decompress and parse the modifier XML
+            modifier = parse_lzma_xml(modifier_data)
+            if modifier is not None:
+                node["modifier"] = modifier
+
+            # Parse remaining data as nested TLV blocks
+            if offset < len(data):
+                nested = parse_blocks(BytesIO(data[offset:]))
+                if nested:
+                    node["node_info"] = nested
         return node
 
     # Type 1: compressed DNA
