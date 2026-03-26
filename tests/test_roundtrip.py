@@ -530,3 +530,35 @@ class TestHistoryRoundtrip:
         content = restored.blocks[30][0]
         assert 6 in content
         assert 8 in content
+
+
+# =============================================================================
+# History Modifier Roundtrip Tests
+# =============================================================================
+
+
+class TestHistoryModifierRoundtrip:
+    def test_seq_type_29_has_modifier(self, circularize_only_dna):
+        """History node with seq_type == 29 has a parsed 'modifier' key (not raw bytes)"""
+        sgff = SgffReader.from_file(circularize_only_dna)
+        nodes = sgff.blocks.get(11, [])
+        type_29_nodes = [n for n in nodes if n.get("sequence_type") == 29]
+        assert len(type_29_nodes) > 0, "No seq_type==29 history nodes found"
+        for node in type_29_nodes:
+            assert "modifier" in node, "seq_type==29 node missing 'modifier' key"
+
+    def test_seq_type_29_modifier_roundtrip(self, circularize_only_dna):
+        """Modifier in seq_type==29 history node survives read->write->read roundtrip"""
+        original = SgffReader.from_file(circularize_only_dna)
+        written = SgffWriter.to_bytes(original)
+        restored = SgffReader.from_bytes(written)
+
+        orig_nodes = [
+            n for n in original.blocks.get(11, []) if n.get("sequence_type") == 29
+        ]
+        rest_nodes = [
+            n for n in restored.blocks.get(11, []) if n.get("sequence_type") == 29
+        ]
+        assert len(orig_nodes) == len(rest_nodes)
+        for orig, rest in zip(orig_nodes, rest_nodes):
+            assert orig["modifier"] == rest["modifier"]

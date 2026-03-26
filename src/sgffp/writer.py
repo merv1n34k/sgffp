@@ -348,7 +348,13 @@ class SgffWriter:
             buf.write(struct.pack(">I", len(seq_bytes)))
             buf.write(seq_bytes)
 
-        # seq_type == 29: modifier only, no sequence data
+        # seq_type == 29: LZMA/XZ compressed modifier blob
+        if seq_type == 29:
+            modifier = data.get("modifier")
+            if modifier is not None:
+                modifier_bytes = self._serialize_lzma_xml(modifier)
+                buf.write(struct.pack(">I", len(modifier_bytes)))
+                buf.write(modifier_bytes)
 
         # Nested node_info — bare TLV blocks (not LZMA-wrapped)
         node_info = data.get("node_info")
