@@ -178,4 +178,10 @@ from sgffp import SgffBindingSite
 | `simplified` | `bool` | `False` | Whether this is a simplified binding site |
 | `extras` | `Dict` | `{}` | Unmodeled data (e.g., `Component` elements) |
 
-Methods: `from_dict(data)`, `to_dict()`.
+#### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `length(seq_len=None)` | `int` | Binding site length. For origin-spanning sites on circular sequences, pass `seq_len` to get the correct wrapped length. |
+| `from_dict(data)` | `SgffBindingSite` | Create from dict |
+| `to_dict()` | `Dict` | Serialize to dict |
