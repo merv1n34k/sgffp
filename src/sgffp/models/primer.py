@@ -26,6 +26,11 @@ class SgffBindingSite:
     simplified: bool = False
     extras: Dict = field(default_factory=dict, repr=False)
 
+    def length(self, seq_len=None) -> int:
+        if self.end >= self.start:
+            return self.end - self.start
+        return seq_len - self.start + self.end
+
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffBindingSite":
         extras = {}

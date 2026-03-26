@@ -1041,6 +1041,22 @@ class TestSgffBindingSite:
         assert bs.bound_strand == "+"
         assert bs.to_dict()["boundStrand"] == "0"
 
+    def test_length_normal(self):
+        bs = SgffBindingSite.from_dict({"location": "207-225", "boundStrand": "0"})
+        assert bs.length() == 19
+
+    def test_length_origin_spanning(self):
+        bs = SgffBindingSite.from_dict({"location": "4398-3", "boundStrand": "0"})
+        assert bs.start == 4397
+        assert bs.end == 3
+        assert bs.length(seq_len=4407) == 13
+
+    def test_origin_spanning_roundtrip(self):
+        data = {"location": "4398-3", "boundStrand": "0", "annealedBases": "ATCG"}
+        bs = SgffBindingSite.from_dict(data)
+        result = bs.to_dict()
+        assert result["location"] == "4398-3"
+
 
 class TestSgffPrimerExtras:
     def test_primer_extras_preserved(self):
