@@ -181,3 +181,43 @@ for trace in sgff.traces:
     if trace.samples:
         print(f"  A channel: {trace.samples.a[:5]}...")
 ```
+
+---
+
+## SgffAttachmentList
+
+File attachments (block 23). Inherits from `SgffListModel[SgffAttachment]`.
+
+```python
+from sgffp import SgffAttachmentList, SgffAttachment
+```
+
+**BLOCK_IDS:** `(23,)`
+
+Provides standard list operations: `add()`, `remove()`, `clear()`, indexing, iteration. Additional lookup methods: `get_by_name(name)`, `get_by_id(file_id)`.
+
+### SgffAttachment
+
+Single file attachment embedded in a SnapGene file.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `id` | `int` | `0` | File ID (auto-assigned on add) |
+| `name` | `str` | `""` | Filename |
+| `data` | `bytes` | `b""` | Raw file content |
+| `size` | `int` | `0` | File size in bytes |
+| `mtime` | `str` | `""` | Modification timestamp |
+| `compressible` | `str` | `"0"` | Whether SnapGene may compress |
+| `extras` | `Dict` | `{}` | Unmodeled manifest attributes |
+
+Methods: `from_blocks(file_block, manifest_entry)`, `to_manifest_dict()`, `to_file_block()`.
+
+### Example
+
+```python
+for att in sgff.attachments:
+    print(f"[{att.id}] {att.name}: {att.size} bytes")
+
+sgff.add_attachment("gel.jpg", open("gel.jpg", "rb").read())
+att = sgff.attachments.get_by_name("gel.jpg")
+```

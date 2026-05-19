@@ -48,6 +48,7 @@ All lazily loaded and cached. Call `invalidate()` to reset.
 | `history` | `SgffHistory` | Edit history |
 | `alignments` | `SgffAlignmentList` | Alignable sequences |
 | `traces` | `SgffTraceList` | Chromatogram traces |
+| `attachments` | `SgffAttachmentList` | File attachments |
 | `ops` | `SgffOps` | Operations API |
 
 ### Existence Checks
@@ -61,6 +62,7 @@ All lazily loaded and cached. Call `invalidate()` to reset.
 | `has_history` | 7, 11, 29, 30 |
 | `has_alignments` | 17 |
 | `has_traces` | 16 |
+| `has_attachments` | 23 |
 
 ### Block Access Methods
 
@@ -86,6 +88,10 @@ Add an annotation feature.
 #### `add_primer(name, sequence, bind_position=None, bind_strand="+") → SgffObject`
 
 Add a primer.
+
+#### `add_attachment(name, data, *, mtime="", compressible="0") → SgffObject`
+
+Add a file attachment.
 
 #### `set_sequence(new_sequence, operation="replace", record_history=True) → SgffObject`
 
