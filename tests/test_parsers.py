@@ -460,7 +460,7 @@ class TestParseHistoryNode:
 class TestScheme:
     def test_scheme_has_expected_types(self):
         """SCHEME contains all expected block types"""
-        expected = {0, 1, 5, 6, 7, 8, 10, 11, 14, 16, 17, 18, 20, 21, 28, 29, 30, 32, 34}
+        expected = {0, 1, 5, 6, 7, 8, 10, 11, 14, 16, 17, 18, 20, 21, 23, 28, 29, 30, 32, 34}
         assert set(SCHEME.keys()) == expected
 
     def test_scheme_sequence_types(self):

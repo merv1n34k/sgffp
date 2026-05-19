@@ -378,6 +378,36 @@ ZTR format (Staden Package) for Sanger sequencing chromatograms.
 | `CLIP` | Quality clip boundaries | Left uint32 + right uint32 |
 | `COMM` | Comments | ASCII text |
 
+### Block 23 — File Attachments
+
+Embeds arbitrary files (images, documents) inside the `.dna` file. Two sub-formats share the same block type ID:
+
+**File data block** (one per attached file):
+
+| Offset | Size | Description |
+|--------|------|-------------|
+| 0 | 4 | `file_id` (big-endian uint32, starts at 1) |
+| 4 | N | Raw file bytes |
+
+**Manifest block** (one per file, lists all attachments):
+
+| Offset | Size | Description |
+|--------|------|-------------|
+| 0 | 4 | `0x00000000` (discriminator — file IDs start at 1) |
+| 4 | 4 | `decompressed_size` (big-endian uint32) |
+| 8 | N | zlib-compressed XML |
+
+**Manifest XML:**
+
+```xml
+<Files>
+  <File id="1" name="gel_image.jpg" size="23996" mtime="2024-06-01" compressible="0"/>
+  <File id="2" name="protocol.pdf" size="51200" mtime="2024-06-01" compressible="1"/>
+</Files>
+```
+
+**Discrimination:** if the first 4 bytes are zero, the block is a manifest; otherwise it is file data.
+
 ### Block 20 — Strand Colors (XML)
 
 Per-strand color highlighting. Top-level element: `<StrandColors>`.

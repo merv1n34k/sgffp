@@ -5,6 +5,7 @@ SnapGene file writer
 import struct
 import json
 import lzma
+import zlib
 from typing import Union, BinaryIO, Any, Dict
 from pathlib import Path
 from io import BytesIO
@@ -149,6 +150,10 @@ class SgffWriter:
         if block_type == 34:
             return self._serialize_lzma_json(data)
 
+        # File attachments (23) - file data or manifest
+        if block_type == 23:
+            return self._serialize_attachment(data)
+
         # XML blocks with declaration (matches SnapGene behavior)
         if block_type in (5, 14, 28):
             return self._serialize_xml(data, xml_declaration=True)
@@ -281,6 +286,32 @@ class SgffWriter:
                     "V": _qual_value_to_xml(v),
                 })
         return result
+
+    def _serialize_attachment(self, data: Dict) -> bytes:
+        """Serialize file attachment block (block 23)."""
+        block_subtype = data.get("_type")
+
+        if block_subtype == "file":
+            file_id = data["id"]
+            file_data = data["data"]
+            return struct.pack(">I", file_id) + file_data
+
+        if block_subtype == "manifest":
+            manifest = data["manifest"]
+            xml_data = _to_xmltodict(manifest)
+            xml_str = xmltodict.unparse(
+                xml_data, full_document=False, short_empty_elements=True
+            )
+            xml_bytes = xml_str.encode("utf-8")
+            compressed = zlib.compress(xml_bytes)
+            decompressed_size = len(xml_bytes)
+            return (
+                struct.pack(">I", 0)
+                + struct.pack(">I", decompressed_size)
+                + compressed
+            )
+
+        raise ValueError(f"Unknown attachment sub-type: {block_subtype}")
 
     def _serialize_xml(
         self, data: Dict, *, xml_declaration: bool = False
