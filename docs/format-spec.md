@@ -378,6 +378,21 @@ ZTR format (Staden Package) for Sanger sequencing chromatograms.
 | `CLIP` | Quality clip boundaries | Left uint32 + right uint32 |
 | `COMM` | Comments | ASCII text |
 
+### Block 20 — Strand Colors (XML)
+
+Per-strand color highlighting. Top-level element: `<StrandColors>`.
+
+```xml
+<StrandColors>
+  <TopStrand><ColorRange range="314..354" colors="magenta"/></TopStrand>
+  <BottomStrand><ColorRange range="318..358" colors="magenta"/></BottomStrand>
+</StrandColors>
+```
+
+### Block 21 — Protein Sequence
+
+Same format as Block 0. Sequence contains amino acid single-letter codes.
+
 ### Block 23 — File Attachments
 
 Embeds arbitrary files (images, documents) inside the `.dna` file. Two sub-formats share the same block type ID:
@@ -407,21 +422,6 @@ Embeds arbitrary files (images, documents) inside the `.dna` file. Two sub-forma
 ```
 
 **Discrimination:** if the first 4 bytes are zero, the block is a manifest; otherwise it is file data.
-
-### Block 20 — Strand Colors (XML)
-
-Per-strand color highlighting. Top-level element: `<StrandColors>`.
-
-```xml
-<StrandColors>
-  <TopStrand><ColorRange range="314..354" colors="magenta"/></TopStrand>
-  <BottomStrand><ColorRange range="318..358" colors="magenta"/></BottomStrand>
-</StrandColors>
-```
-
-### Block 21 — Protein Sequence
-
-Same format as Block 0. Sequence contains amino acid single-letter codes.
 
 ### Block 28 — Enzyme Visibilities (XML)
 
