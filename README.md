@@ -11,7 +11,7 @@ A reverse-engineered parser and writer for SnapGene `.dna` files (DNA, RNA, prot
 pip install sgffp
 ```
 
-Requires Python 3.12+.
+Requires Python 3.10+.
 
 ## Quick Start
 

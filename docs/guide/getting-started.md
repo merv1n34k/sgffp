@@ -20,7 +20,7 @@ cd sgffp
 uv sync --dev
 ```
 
-Requires **Python 3.12+**.
+Requires **Python 3.10+**.
 
 ## Read a File
 
