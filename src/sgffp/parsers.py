@@ -458,6 +458,47 @@ def parse_trace_container(data: bytes) -> Dict[str, Any]:
 
 
 # =============================================================================
+# ATTACHMENT PARSER
+# =============================================================================
+
+
+def parse_attachment(data: bytes) -> Optional[Dict[str, Any]]:
+    """Parse file attachment block (block 23).
+
+    Two sub-formats share block type 23:
+    - File data: [uint32_BE file_id][raw binary]
+    - Manifest: [4 zero bytes][uint32_BE decompressed_size][zlib XML]
+
+    Discrimination: first 4 bytes == 0 → manifest, otherwise file data.
+    """
+    if len(data) < 4:
+        logger.debug("Attachment block too short (%d bytes)", len(data))
+        return None
+
+    first_four = struct.unpack(">I", data[:4])[0]
+
+    if first_four == 0:
+        # Manifest: 4 zero bytes + uint32 decompressed_size + zlib XML
+        if len(data) < 8:
+            logger.debug("Attachment manifest too short (%d bytes)", len(data))
+            return None
+        try:
+            decompressed = zlib.decompress(data[8:])
+            parsed = xmltodict.parse(decompressed.decode("utf-8", errors="ignore"))
+            return {"_type": "manifest", "manifest": _clean_xml_dict(parsed)}
+        except Exception as e:
+            logger.debug("Failed to parse attachment manifest: %s", e)
+            return None
+    else:
+        # File data: uint32 file_id + raw bytes
+        return {
+            "_type": "file",
+            "id": first_four,
+            "data": data[4:],
+        }
+
+
+# =============================================================================
 # HISTORY NODE PARSER
 # =============================================================================
 
@@ -549,6 +590,7 @@ SCHEME: Dict[int, Callable] = {
     18: parse_ztr,  # Sequence trace (inside block 16)
     20: parse_xml,  # Strand colors
     21: parse_sequence,  # Protein
+    23: parse_attachment,  # File attachments
     28: parse_xml,  # Enzyme visibilities
     29: parse_lzma_xml,  # History modifier
     30: parse_lzma_nested,  # History node content

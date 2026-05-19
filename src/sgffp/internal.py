@@ -18,6 +18,8 @@ from .models import (
     SgffProperties,
     SgffAlignmentList,
     SgffTraceList,
+    SgffAttachment,
+    SgffAttachmentList,
 )
 
 
@@ -111,6 +113,7 @@ class SgffObject:
         self._properties: Optional[SgffProperties] = None
         self._alignments: Optional[SgffAlignmentList] = None
         self._traces: Optional[SgffTraceList] = None
+        self._attachments: Optional[SgffAttachmentList] = None
         self._ops = None
 
     def invalidate(self) -> None:
@@ -123,6 +126,7 @@ class SgffObject:
         self._properties = None
         self._alignments = None
         self._traces = None
+        self._attachments = None
         self._ops = None
 
     @property
@@ -228,6 +232,13 @@ class SgffObject:
         return self._traces
 
     @property
+    def attachments(self) -> SgffAttachmentList:
+        """File attachments."""
+        if self._attachments is None:
+            self._attachments = SgffAttachmentList(self.blocks)
+        return self._attachments
+
+    @property
     def ops(self):
         """Operations API for recording history changes."""
         if self._ops is None:
@@ -263,6 +274,10 @@ class SgffObject:
     @property
     def has_traces(self) -> bool:
         return 16 in self.blocks
+
+    @property
+    def has_attachments(self) -> bool:
+        return 23 in self.blocks
 
     def add_feature(
         self,
@@ -327,4 +342,23 @@ class SgffObject:
             binding_sites=binding_sites,
         )
         self.primers.add(primer)
+        return self
+
+    def add_attachment(
+        self,
+        name: str,
+        data: bytes,
+        *,
+        mtime: str = "",
+        compressible: str = "0",
+    ) -> "SgffObject":
+        """Add a file attachment. Returns self for chaining."""
+        attachment = SgffAttachment(
+            name=name,
+            data=data,
+            size=len(data),
+            mtime=mtime,
+            compressible=compressible,
+        )
+        self.attachments.add(attachment)
         return self

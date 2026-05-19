@@ -31,11 +31,14 @@ def cmd_parse(args):
     # Convert int keys to strings for JSON
     blocks_json = {str(k): v for k, v in sgff.blocks.items()}
 
-    # Handle mystery bytes (not JSON serializable)
+    # Handle non-JSON-serializable bytes fields
     for key, items in blocks_json.items():
         for item in items:
-            if isinstance(item, dict) and "mystery" in item:
-                item["mystery"] = item["mystery"].hex()
+            if isinstance(item, dict):
+                if "mystery" in item:
+                    item["mystery"] = item["mystery"].hex()
+                if "data" in item and isinstance(item["data"], bytes):
+                    item["data"] = f"<binary {len(item['data'])} bytes>"
 
     output = {
         "cookie": {
@@ -86,6 +89,10 @@ def cmd_info(args):
     if sgff.has_traces:
         print(f"Traces: {len(sgff.traces)}")
 
+    # Attachments
+    if sgff.has_attachments:
+        print(f"Attachments: {len(sgff.attachments)}")
+
     # History
     if sgff.has_history:
         print(f"History: {len(sgff.history)} nodes")
@@ -129,6 +136,12 @@ def cmd_info(args):
         print(f"\n--- Traces ({len(sgff.traces)}) ---")
         for i, t in enumerate(sgff.traces, 1):
             print(f"  Trace {i}: {t.length} bases, {t.sample_count} samples")
+
+    # Attachments
+    if sgff.has_attachments:
+        print(f"\n--- Attachments ({len(sgff.attachments)}) ---")
+        for att in sgff.attachments:
+            print(f"  [{att.id}] {att.name} ({att.size} bytes)")
 
     # History
     if sgff.has_history:
