@@ -47,9 +47,9 @@ sff info [input] [-v]
 
 ### Output
 
-Basic mode shows: file type, sequence length/topology/strandedness, feature/primer/trace/attachment/history counts, block IDs present.
+Basic mode shows: file type, sequence length/topology/strandedness, feature/primer/trace/trace alignment/attachment/history counts, block IDs present.
 
-Verbose mode (`-v`) additionally shows: notes (description, created, modified), feature list with strand/type/positions, primer list, trace details, attachment list, history tree.
+Verbose mode (`-v`) additionally shows: notes (description, created, modified), feature list with strand/type/positions, primer list, trace details, trace alignment (SAM header, references, per-record CIGAR/strand/position), attachment list, history tree.
 
 ### Examples
 

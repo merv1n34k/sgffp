@@ -20,6 +20,7 @@ from .models import (
     SgffTraceList,
     SgffAttachment,
     SgffAttachmentList,
+    SgffTraceAlignment,
 )
 
 
@@ -114,6 +115,7 @@ class SgffObject:
         self._alignments: Optional[SgffAlignmentList] = None
         self._traces: Optional[SgffTraceList] = None
         self._attachments: Optional[SgffAttachmentList] = None
+        self._trace_alignment: Optional[SgffTraceAlignment] = None
         self._ops = None
 
     def invalidate(self) -> None:
@@ -127,6 +129,7 @@ class SgffObject:
         self._alignments = None
         self._traces = None
         self._attachments = None
+        self._trace_alignment = None
         self._ops = None
 
     @property
@@ -239,6 +242,13 @@ class SgffObject:
         return self._attachments
 
     @property
+    def trace_alignment(self) -> SgffTraceAlignment:
+        """Trace alignment (BAM) data."""
+        if self._trace_alignment is None:
+            self._trace_alignment = SgffTraceAlignment(self.blocks)
+        return self._trace_alignment
+
+    @property
     def ops(self):
         """Operations API for recording history changes."""
         if self._ops is None:
@@ -278,6 +288,10 @@ class SgffObject:
     @property
     def has_attachments(self) -> bool:
         return 23 in self.blocks
+
+    @property
+    def has_trace_alignment(self) -> bool:
+        return 27 in self.blocks
 
     def add_feature(
         self,

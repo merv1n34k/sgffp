@@ -537,6 +537,51 @@ class TestHistoryRoundtrip:
 # =============================================================================
 
 
+# =============================================================================
+# Block 27 (Trace Alignment) Roundtrip Tests
+# =============================================================================
+
+
+class TestTraceAlignmentRoundtrip:
+    def test_block_27_roundtrip(self, test3_dna):
+        """Block 27 (trace alignment BAM) survives roundtrip"""
+        original = SgffReader.from_file(test3_dna)
+        assert 27 in original.blocks
+
+        written = SgffWriter.to_bytes(original)
+        restored = SgffReader.from_bytes(written)
+
+        assert 27 in restored.blocks
+        orig_ta = original.trace_alignment
+        rest_ta = restored.trace_alignment
+        assert orig_ta.header == rest_ta.header
+        assert orig_ta.reference_count == rest_ta.reference_count
+        assert orig_ta.record_count == rest_ta.record_count
+        for orig_ref, rest_ref in zip(orig_ta.references, rest_ta.references):
+            assert orig_ref.name == rest_ref.name
+            assert orig_ref.length == rest_ref.length
+        for orig_rec, rest_rec in zip(orig_ta.records, rest_ta.records):
+            assert orig_rec.read_name == rest_rec.read_name
+            assert orig_rec.cigar == rest_rec.cigar
+            assert orig_rec.sequence == rest_rec.sequence
+            assert orig_rec.quality == rest_rec.quality
+            assert orig_rec.flag == rest_rec.flag
+            assert orig_rec.pos == rest_rec.pos
+            assert orig_rec.mapq == rest_rec.mapq
+
+    def test_block_27_double_roundtrip_stable(self, test3_dna):
+        """Block 27 output stabilizes after first roundtrip"""
+        original = SgffReader.from_file(test3_dna)
+
+        written1 = SgffWriter.to_bytes(original)
+        restored1 = SgffReader.from_bytes(written1)
+        written2 = SgffWriter.to_bytes(restored1)
+        restored2 = SgffReader.from_bytes(written2)
+        written3 = SgffWriter.to_bytes(restored2)
+
+        assert written2 == written3
+
+
 class TestHistoryModifierRoundtrip:
     def test_seq_type_29_has_modifier(self, circularize_only_dna):
         """History node with seq_type == 29 has a parsed 'modifier' key (not raw bytes)"""

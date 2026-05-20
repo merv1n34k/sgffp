@@ -423,6 +423,33 @@ Embeds arbitrary files (images, documents) inside the `.dna` file. Two sub-forma
 
 **Discrimination:** if the first 4 bytes are zero, the block is a manifest; otherwise it is file data.
 
+### Block 27 — Trace Alignment (BGZF BAM)
+
+Stores alignment of sequencing traces (block 16) against the reference sequence as BGZF-compressed BAM data.
+
+**BGZF structure:** Concatenated gzip blocks, each with a BC extra field containing the block size (BSIZE). Ends with a standard 28-byte EOF marker.
+
+| Component | Description |
+|-----------|-------------|
+| Header block | BAM magic (`BAM\x01`) + SAM header text + reference sequences |
+| Data block(s) | Alignment records (one per trace) |
+| EOF block | 28-byte empty gzip block (standard BAM EOF marker) |
+
+**BAM header:**
+
+| Offset | Size | Description |
+|--------|------|-------------|
+| 0 | 4 | Magic `BAM\x01` |
+| 4 | 4 | `l_text` — SAM header length (little-endian int32) |
+| 8 | l_text | SAM header text (e.g. `@HD\tVN:1.6\tSO::unsorted\n`) |
+| 8+l_text | 4 | `n_ref` — number of reference sequences |
+
+Per reference: `l_name` (int32) + name (null-terminated) + `l_ref` (int32, sequence length).
+
+**Alignment record fields:** `ref_id`, `pos`, `mapq`, `bin`, `flag`, CIGAR ops, 4-bit packed sequence, quality scores, auxiliary tags.
+
+**Relationship with block 17:** Block 17 (`AlignableSequences` XML) holds alignment metadata — trim range, display settings. Block 27 holds the actual BAM data. They are linked by ID: block 17's `Sequence/@ID` matches block 27's BAM record `read_name`.
+
 ### Block 28 — Enzyme Visibilities (XML)
 
 Override enzyme visibility. Top-level element: `<EnzymeVisibilities>`.

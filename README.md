@@ -1,6 +1,6 @@
 # SnapGene File Format Parser
 
-A reverse-engineered parser and writer for SnapGene `.dna` files (DNA, RNA, protein). Supports all 16 known block types with typed Python models, a chainable builder pattern, and a history operations API.
+A reverse-engineered parser and writer for SnapGene `.dna` files (DNA, RNA, protein). Supports all 17 known block types with typed Python models, a chainable builder pattern, and a history operations API.
 
 > [!Important]
 > Found an unknown block type? Run `sff check your_file.dna -l` — blocks marked `[NEW]` are genuinely unknown, `[*]` are known but undecoded. Please report `[NEW]` blocks in [#1](https://github.com/merv1n34k/sgffp/issues/1) with a dump (`sff check your_file.dna -d`).
@@ -86,6 +86,7 @@ SnapGene files use a **TLV (Type-Length-Value)** binary format after a 19-byte h
 | 20 | Strand Colors | XML | |
 | 21 | Protein Sequence | UTF-8 | SgffSequence |
 | 23 | File Attachments | Binary + zlib XML | SgffAttachmentList |
+| 27 | Trace Alignment | BGZF + BAM | SgffTraceAlignment |
 | 28 | Enzyme Visibilities | XML | |
 | 29 | History Modifier | LZMA + XML | SgffHistory |
 | 30 | History Content | LZMA + TLV | SgffHistory |

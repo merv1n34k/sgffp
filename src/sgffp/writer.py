@@ -154,6 +154,10 @@ class SgffWriter:
         if block_type == 23:
             return self._serialize_attachment(data)
 
+        # Trace alignment (27) - BGZF BAM
+        if block_type == 27:
+            return self._serialize_trace_alignment(data)
+
         # XML blocks with declaration (matches SnapGene behavior)
         if block_type in (5, 14, 28):
             return self._serialize_xml(data, xml_declaration=True)
@@ -312,6 +316,142 @@ class SgffWriter:
             )
 
         raise ValueError(f"Unknown attachment sub-type: {block_subtype}")
+
+    def _serialize_trace_alignment(self, data: Dict) -> bytes:
+        """Serialize trace alignment dict back to BGZF-compressed BAM."""
+        header_text = data.get("header", "")
+        references = data.get("references", [])
+        records = data.get("records", [])
+
+        # Build BAM header block
+        header_buf = BytesIO()
+        header_buf.write(b"BAM\x01")
+        header_bytes = header_text.encode("ascii")
+        header_buf.write(struct.pack("<i", len(header_bytes)))
+        header_buf.write(header_bytes)
+        header_buf.write(struct.pack("<i", len(references)))
+        for ref in references:
+            name = ref.get("name", "")
+            name_bytes = name.encode("ascii") + b"\x00"
+            header_buf.write(struct.pack("<i", len(name_bytes)))
+            header_buf.write(name_bytes)
+            header_buf.write(struct.pack("<i", ref.get("length", 0)))
+        header_data = header_buf.getvalue()
+
+        # Build alignment records
+        records_buf = BytesIO()
+        for rec in records:
+            rec_buf = BytesIO()
+            rec_buf.write(struct.pack("<i", rec.get("ref_id", 0)))
+            rec_buf.write(struct.pack("<i", rec.get("pos", 0)))
+
+            read_name = rec.get("read_name", "")
+            read_name_bytes = read_name.encode("ascii") + b"\x00"
+            l_read_name = len(read_name_bytes)
+
+            cigar_ops = self._encode_cigar(rec.get("cigar", ""))
+            n_cigar_op = len(cigar_ops)
+
+            mapq = rec.get("mapq", 255)
+            bam_bin = rec.get("bin", 0)
+            bin_mq_nl = (bam_bin << 16) | (mapq << 8) | l_read_name
+            rec_buf.write(struct.pack("<I", bin_mq_nl))
+
+            flag = rec.get("flag", 0)
+            flag_nc = (flag << 16) | n_cigar_op
+            rec_buf.write(struct.pack("<I", flag_nc))
+
+            sequence = rec.get("sequence", "")
+            l_seq = len(sequence)
+            rec_buf.write(struct.pack("<i", l_seq))
+            rec_buf.write(struct.pack("<i", rec.get("next_ref_id", 0)))
+            rec_buf.write(struct.pack("<i", rec.get("next_pos", 0)))
+            rec_buf.write(struct.pack("<i", rec.get("tlen", 0)))
+
+            rec_buf.write(read_name_bytes)
+
+            for op in cigar_ops:
+                rec_buf.write(struct.pack("<I", op))
+
+            rec_buf.write(self._encode_bam_seq(sequence))
+
+            quality = rec.get("quality", [])
+            if quality:
+                rec_buf.write(bytes(quality))
+            else:
+                rec_buf.write(b"\xff" * l_seq)
+
+            rec_data = rec_buf.getvalue()
+            records_buf.write(struct.pack("<i", len(rec_data)))
+            records_buf.write(rec_data)
+
+        records_data = records_buf.getvalue()
+
+        # BGZF compress: header block + records block + EOF marker
+        result = BytesIO()
+        result.write(self._bgzf_compress(header_data))
+        if records_data:
+            result.write(self._bgzf_compress(records_data))
+        # EOF marker
+        result.write(
+            b"\x1f\x8b\x08\x04\x00\x00\x00\x00\x00\xff"
+            b"\x06\x00BC\x02\x00\x1b\x00"
+            b"\x03\x00\x00\x00\x00\x00\x00\x00\x00\x00"
+        )
+        return result.getvalue()
+
+    @staticmethod
+    def _encode_cigar(cigar_str: str) -> list:
+        """Encode CIGAR string to list of uint32 BAM CIGAR ops."""
+        import re
+
+        ops_map = {c: i for i, c in enumerate("MIDNSHP=X")}
+        result = []
+        for match in re.finditer(r"(\d+)([MIDNSHP=X])", cigar_str):
+            length = int(match.group(1))
+            op = ops_map[match.group(2)]
+            result.append((length << 4) | op)
+        return result
+
+    @staticmethod
+    def _encode_bam_seq(sequence: str) -> bytes:
+        """Encode sequence string to 4-bit packed BAM format."""
+        seq_map = {c: i for i, c in enumerate("=ACMGRSVTWYHKDBN")}
+        result = bytearray()
+        for i in range(0, len(sequence), 2):
+            high = seq_map.get(sequence[i], 15)
+            low = seq_map.get(sequence[i + 1], 15) if i + 1 < len(sequence) else 0
+            result.append((high << 4) | low)
+        return bytes(result)
+
+    @staticmethod
+    def _bgzf_compress(data: bytes) -> bytes:
+        """Compress data into a single BGZF block."""
+        # Deflate the data
+        compressor = zlib.compressobj(zlib.Z_DEFAULT_COMPRESSION, zlib.DEFLATED, -15)
+        compressed = compressor.compress(data) + compressor.flush()
+
+        # BGZF block: gzip header with BC extra field + compressed + gzip footer
+        bsize = 18 + len(compressed) + 8 - 1  # total block size - 1
+        buf = BytesIO()
+        # Gzip header
+        buf.write(b"\x1f\x8b")  # magic
+        buf.write(b"\x08")  # compression method (deflate)
+        buf.write(b"\x04")  # flags (FEXTRA)
+        buf.write(b"\x00\x00\x00\x00")  # mtime
+        buf.write(b"\x00")  # xfl
+        buf.write(b"\xff")  # OS (unknown)
+        # Extra field
+        buf.write(struct.pack("<H", 6))  # XLEN
+        buf.write(b"BC")  # subfield ID
+        buf.write(struct.pack("<H", 2))  # subfield length
+        buf.write(struct.pack("<H", bsize))  # BSIZE
+        # Compressed data
+        buf.write(compressed)
+        # Gzip footer
+        buf.write(struct.pack("<I", zlib.crc32(data) & 0xFFFFFFFF))
+        buf.write(struct.pack("<I", len(data) & 0xFFFFFFFF))
+        return buf.getvalue()
 
     def _serialize_xml(
         self, data: Dict, *, xml_declaration: bool = False

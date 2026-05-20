@@ -26,6 +26,9 @@ from sgffp.models import (
     SgffTraceList,
     SgffTraceClip,
     SgffTraceSamples,
+    SgffTraceAlignment,
+    SgffBamRecord,
+    SgffBamReference,
 )
 
 
@@ -1971,3 +1974,116 @@ class TestHistoryOperationCategories:
         restored = SgffReader.from_bytes(written)
         assert len(restored.history.tree) == original_count + 2
         assert restored.sequence.value == new_seq
+
+
+# =============================================================================
+# Trace Alignment Model Tests
+# =============================================================================
+
+
+class TestSgffBamReference:
+    def test_from_dict(self):
+        """Create reference from dict"""
+        data = {"name": "reference", "length": 154}
+        ref = SgffBamReference.from_dict(data)
+        assert ref.name == "reference"
+        assert ref.length == 154
+
+    def test_to_dict(self):
+        """Convert reference to dict"""
+        ref = SgffBamReference(name="chr1", length=1000)
+        data = ref.to_dict()
+        assert data["name"] == "chr1"
+        assert data["length"] == 1000
+
+    def test_defaults(self):
+        """Missing values default"""
+        ref = SgffBamReference.from_dict({})
+        assert ref.name == ""
+        assert ref.length == 0
+
+
+class TestSgffBamRecord:
+    def test_from_dict(self):
+        """Create record from dict"""
+        data = {
+            "read_name": "0",
+            "flag": 0,
+            "ref_id": 0,
+            "pos": 0,
+            "mapq": 255,
+            "cigar": "3S154M6S",
+            "sequence": "ATCG",
+            "quality": [255, 255, 255, 255],
+        }
+        rec = SgffBamRecord.from_dict(data)
+        assert rec.read_name == "0"
+        assert rec.cigar == "3S154M6S"
+        assert rec.length == 4
+        assert not rec.is_unmapped
+        assert not rec.is_reverse
+
+    def test_is_unmapped(self):
+        """Flag 0x4 marks unmapped"""
+        rec = SgffBamRecord(flag=4)
+        assert rec.is_unmapped
+
+    def test_is_reverse(self):
+        """Flag 0x10 marks reverse strand"""
+        rec = SgffBamRecord(flag=16)
+        assert rec.is_reverse
+
+    def test_to_dict(self):
+        """Convert record to dict"""
+        rec = SgffBamRecord(read_name="test", cigar="10M", sequence="ATCGATCGAT")
+        data = rec.to_dict()
+        assert data["read_name"] == "test"
+        assert data["cigar"] == "10M"
+
+
+class TestSgffTraceAlignment:
+    def test_empty_blocks(self):
+        """Empty blocks return empty trace alignment"""
+        ta = SgffTraceAlignment({})
+        assert ta.header == ""
+        assert ta.references == []
+        assert ta.records == []
+        assert ta.record_count == 0
+        assert ta.reference_count == 0
+        assert not ta.exists
+
+    def test_load_from_test3(self, test3_dna):
+        """Load trace alignment from test3.dna"""
+        from sgffp.reader import SgffReader
+
+        sgff = SgffReader.from_file(test3_dna)
+        assert sgff.has_trace_alignment
+        ta = sgff.trace_alignment
+        assert ta.exists
+        assert ta.header.startswith("@HD")
+        assert ta.reference_count == 1
+        assert ta.references[0].name == "reference"
+        assert ta.references[0].length == 154
+        assert ta.record_count == 1
+        rec = ta.records[0]
+        assert rec.read_name == "0"
+        assert rec.cigar == "3S154M6S"
+        assert rec.length == 163
+        assert rec.flag == 0
+        assert not rec.is_unmapped
+        assert not rec.is_reverse
+
+    def test_has_trace_alignment_false(self, test_dna):
+        """test.dna has no trace alignment"""
+        from sgffp.reader import SgffReader
+
+        sgff = SgffReader.from_file(test_dna)
+        assert not sgff.has_trace_alignment
+
+    def test_repr(self):
+        """String representation"""
+        blocks = {27: [{"header": "@HD", "references": [{"name": "ref", "length": 100}], "records": []}]}
+        ta = SgffTraceAlignment(blocks)
+        assert "SgffTraceAlignment" in repr(ta)
+        assert "references=1" in repr(ta)
+        assert "records=0" in repr(ta)

@@ -221,3 +221,58 @@ for att in sgff.attachments:
 sgff.add_attachment("gel.jpg", open("gel.jpg", "rb").read())
 att = sgff.attachments.get_by_name("gel.jpg")
 ```
+
+---
+
+## SgffTraceAlignment
+
+Trace alignment data (block 27). Inherits from `SgffModel`. Contains BGZF-compressed BAM data — alignments of sequencing traces against the reference sequence.
+
+```python
+from sgffp import SgffTraceAlignment, SgffBamRecord, SgffBamReference
+```
+
+**BLOCK_IDS:** `(27,)`
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `header` | `str` | SAM header text |
+| `references` | `List[SgffBamReference]` | Reference sequences |
+| `records` | `List[SgffBamRecord]` | Alignment records |
+| `record_count` | `int` | Number of alignment records |
+| `reference_count` | `int` | Number of reference sequences |
+
+### SgffBamReference
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | `str` | `""` | Reference name |
+| `length` | `int` | `0` | Reference length in bp |
+
+### SgffBamRecord
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `read_name` | `str` | `""` | Read/trace name (matches block 17 Sequence/@ID) |
+| `flag` | `int` | `0` | SAM flag bits |
+| `ref_id` | `int` | `0` | Reference sequence index |
+| `pos` | `int` | `0` | 0-based mapping position |
+| `mapq` | `int` | `255` | Mapping quality |
+| `cigar` | `str` | `""` | CIGAR string (e.g. `3S154M6S`) |
+| `sequence` | `str` | `""` | Read sequence |
+| `quality` | `List[int]` | `[]` | Per-base quality scores |
+
+Properties: `is_unmapped`, `is_reverse`, `length`.
+
+### Example
+
+```python
+if sgff.has_trace_alignment:
+    ta = sgff.trace_alignment
+    print(f"SAM header: {ta.header}")
+    for ref in ta.references:
+        print(f"  Reference: {ref.name} ({ref.length} bp)")
+    for rec in ta.records:
+        strand = "reverse" if rec.is_reverse else "forward"
+        print(f"  {rec.read_name}: {strand}, CIGAR={rec.cigar}, {rec.length}bp")
+```
