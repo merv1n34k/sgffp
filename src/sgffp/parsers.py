@@ -3,6 +3,7 @@ Block type parsers and parsing scheme
 """
 
 import struct
+import gzip
 import lzma
 import logging
 import json
@@ -569,6 +570,198 @@ def parse_history_node(data: bytes) -> Dict[str, Any]:
 
 
 # =============================================================================
+# TRACE ALIGNMENT (BAM/BGZF) PARSER
+# =============================================================================
+
+BAM_MAGIC = b"BAM\x01"
+_BAM_SEQ_BASES = "=ACMGRSVTWYHKDBN"
+_BAM_CIGAR_OPS = "MIDNSHP=X"
+
+
+def _decompress_bgzf(data: bytes) -> bytes:
+    """Decompress BGZF (blocked gzip) data into raw BAM bytes."""
+    result = bytearray()
+    offset = 0
+    while offset < len(data):
+        if data[offset : offset + 2] != b"\x1f\x8b":
+            break
+        # BSIZE in BC extra field at offset 16-17
+        bsize = struct.unpack("<H", data[offset + 16 : offset + 18])[0]
+        block = data[offset : offset + bsize + 1]
+        decompressed = gzip.decompress(block)
+        result.extend(decompressed)
+        offset += bsize + 1
+    return bytes(result)
+
+
+def _decode_bam_seq(data: bytes, l_seq: int) -> str:
+    """Decode 4-bit packed BAM sequence to string."""
+    result = []
+    for b in data:
+        result.append(_BAM_SEQ_BASES[(b >> 4) & 0xF])
+        result.append(_BAM_SEQ_BASES[b & 0xF])
+    return "".join(result[:l_seq])
+
+
+def _decode_cigar(data: bytes, n_ops: int) -> str:
+    """Decode BAM CIGAR operations to string like '3S154M6S'."""
+    parts = []
+    for i in range(n_ops):
+        val = struct.unpack("<I", data[i * 4 : i * 4 + 4])[0]
+        parts.append(f"{val >> 4}{_BAM_CIGAR_OPS[val & 0xF]}")
+    return "".join(parts)
+
+
+def _parse_bam_aux_tags(data: bytes) -> Dict[str, Any]:
+    """Parse BAM auxiliary tags."""
+    tags: Dict[str, Any] = {}
+    offset = 0
+    while offset + 3 <= len(data):
+        tag = data[offset : offset + 2].decode("ascii")
+        val_type = chr(data[offset + 2])
+        offset += 3
+
+        if val_type == "A":
+            tags[tag] = chr(data[offset])
+            offset += 1
+        elif val_type == "c":
+            tags[tag] = struct.unpack("<b", data[offset : offset + 1])[0]
+            offset += 1
+        elif val_type == "C":
+            tags[tag] = data[offset]
+            offset += 1
+        elif val_type == "s":
+            tags[tag] = struct.unpack("<h", data[offset : offset + 2])[0]
+            offset += 2
+        elif val_type == "S":
+            tags[tag] = struct.unpack("<H", data[offset : offset + 2])[0]
+            offset += 2
+        elif val_type == "i":
+            tags[tag] = struct.unpack("<i", data[offset : offset + 4])[0]
+            offset += 4
+        elif val_type == "I":
+            tags[tag] = struct.unpack("<I", data[offset : offset + 4])[0]
+            offset += 4
+        elif val_type == "f":
+            tags[tag] = struct.unpack("<f", data[offset : offset + 4])[0]
+            offset += 4
+        elif val_type == "Z":
+            end = data.index(0, offset)
+            tags[tag] = data[offset:end].decode("ascii")
+            offset = end + 1
+        elif val_type == "H":
+            end = data.index(0, offset)
+            tags[tag] = data[offset:end].hex()
+            offset = end + 1
+        else:
+            break
+    return tags
+
+
+def parse_trace_alignment(data: bytes) -> Optional[Dict[str, Any]]:
+    """Parse BGZF-compressed BAM trace alignment data (block 27)."""
+    try:
+        raw = _decompress_bgzf(data)
+    except Exception as e:
+        logger.debug("Failed to decompress BGZF: %s", e)
+        return None
+
+    if len(raw) < 4 or raw[:4] != BAM_MAGIC:
+        logger.debug("Invalid BAM magic")
+        return None
+
+    offset = 4
+    l_text = struct.unpack("<i", raw[offset : offset + 4])[0]
+    offset += 4
+    header = raw[offset : offset + l_text].decode("ascii", errors="ignore")
+    offset += l_text
+
+    n_ref = struct.unpack("<i", raw[offset : offset + 4])[0]
+    offset += 4
+
+    references = []
+    for _ in range(n_ref):
+        l_name = struct.unpack("<i", raw[offset : offset + 4])[0]
+        offset += 4
+        name = raw[offset : offset + l_name - 1].decode("ascii", errors="ignore")
+        offset += l_name
+        l_ref = struct.unpack("<i", raw[offset : offset + 4])[0]
+        offset += 4
+        references.append({"name": name, "length": l_ref})
+
+    records = []
+    while offset + 4 <= len(raw):
+        block_size = struct.unpack("<i", raw[offset : offset + 4])[0]
+        if block_size <= 0:
+            break
+        offset += 4
+        rec_end = offset + block_size
+
+        ref_id = struct.unpack("<i", raw[offset : offset + 4])[0]
+        offset += 4
+        pos = struct.unpack("<i", raw[offset : offset + 4])[0]
+        offset += 4
+
+        bin_mq_nl = struct.unpack("<I", raw[offset : offset + 4])[0]
+        offset += 4
+        l_read_name = bin_mq_nl & 0xFF
+        mapq = (bin_mq_nl >> 8) & 0xFF
+        bam_bin = (bin_mq_nl >> 16) & 0xFFFF
+
+        flag_nc = struct.unpack("<I", raw[offset : offset + 4])[0]
+        offset += 4
+        n_cigar_op = flag_nc & 0xFFFF
+        flag = (flag_nc >> 16) & 0xFFFF
+
+        l_seq = struct.unpack("<i", raw[offset : offset + 4])[0]
+        offset += 4
+        next_ref_id = struct.unpack("<i", raw[offset : offset + 4])[0]
+        offset += 4
+        next_pos = struct.unpack("<i", raw[offset : offset + 4])[0]
+        offset += 4
+        tlen = struct.unpack("<i", raw[offset : offset + 4])[0]
+        offset += 4
+
+        read_name = raw[offset : offset + l_read_name - 1].decode(
+            "ascii", errors="ignore"
+        )
+        offset += l_read_name
+
+        cigar = _decode_cigar(raw[offset : offset + n_cigar_op * 4], n_cigar_op)
+        offset += n_cigar_op * 4
+
+        seq_bytes = (l_seq + 1) // 2
+        sequence = _decode_bam_seq(raw[offset : offset + seq_bytes], l_seq)
+        offset += seq_bytes
+
+        quality = list(raw[offset : offset + l_seq])
+        offset += l_seq
+
+        aux = _parse_bam_aux_tags(raw[offset:rec_end])
+        offset = rec_end
+
+        records.append(
+            {
+                "read_name": read_name,
+                "flag": flag,
+                "ref_id": ref_id,
+                "pos": pos,
+                "mapq": mapq,
+                "cigar": cigar,
+                "sequence": sequence,
+                "quality": quality,
+                "next_ref_id": next_ref_id,
+                "next_pos": next_pos,
+                "tlen": tlen,
+                "bin": bam_bin,
+                "aux": aux,
+            }
+        )
+
+    return {"header": header, "references": references, "records": records}
+
+
+# =============================================================================
 # PARSING SCHEME
 # =============================================================================
 
@@ -591,6 +784,7 @@ SCHEME: Dict[int, Callable] = {
     20: parse_xml,  # Strand colors
     21: parse_sequence,  # Protein
     23: parse_attachment,  # File attachments
+    27: parse_trace_alignment,  # Trace alignment (BGZF BAM)
     28: parse_xml,  # Enzyme visibilities
     29: parse_lzma_xml,  # History modifier
     30: parse_lzma_nested,  # History node content

@@ -91,6 +91,10 @@ def cmd_info(args):
     if sgff.has_traces:
         print(f"Traces: {len(sgff.traces)}")
 
+    # Trace alignment
+    if sgff.has_trace_alignment:
+        print(f"Trace alignment: {sgff.trace_alignment.record_count} records")
+
     # Attachments
     if sgff.has_attachments:
         print(f"Attachments: {len(sgff.attachments)}")
@@ -138,6 +142,17 @@ def cmd_info(args):
         print(f"\n--- Traces ({len(sgff.traces)}) ---")
         for i, t in enumerate(sgff.traces, 1):
             print(f"  Trace {i}: {t.length} bases, {t.sample_count} samples")
+
+    # Trace alignment
+    if sgff.has_trace_alignment:
+        ta = sgff.trace_alignment
+        print(f"\n--- Trace Alignment ({ta.record_count} records) ---")
+        print(f"  SAM header: {ta.header.strip()}")
+        for ref in ta.references:
+            print(f"  Reference: {ref.name} ({ref.length} bp)")
+        for rec in ta.records:
+            strand = "reverse" if rec.is_reverse else "forward"
+            print(f"  Record: {rec.read_name}, {strand}, CIGAR={rec.cigar}, {rec.length}bp, pos={rec.pos}")
 
     # Attachments
     if sgff.has_attachments:

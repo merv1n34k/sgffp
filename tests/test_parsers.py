@@ -20,6 +20,7 @@ from sgffp.parsers import (
     parse_features,
     parse_ztr,
     parse_history_node,
+    parse_trace_alignment,
     SCHEME,
     ZTR_MAGIC,
 )
@@ -460,7 +461,7 @@ class TestParseHistoryNode:
 class TestScheme:
     def test_scheme_has_expected_types(self):
         """SCHEME contains all expected block types"""
-        expected = {0, 1, 5, 6, 7, 8, 10, 11, 14, 16, 17, 18, 20, 21, 23, 28, 29, 30, 32, 34}
+        expected = {0, 1, 5, 6, 7, 8, 10, 11, 14, 16, 17, 18, 20, 21, 23, 27, 28, 29, 30, 32, 34}
         assert set(SCHEME.keys()) == expected
 
     def test_scheme_sequence_types(self):
@@ -581,3 +582,43 @@ class TestParseLzmaJson:
         """Invalid data returns None"""
         result = parse_lzma_json(b"not lzma data")
         assert result is None
+
+
+# =============================================================================
+# Trace Alignment (BAM/BGZF) Parser Tests
+# =============================================================================
+
+
+class TestParseTraceAlignment:
+    def test_parse_from_test3(self, test3_dna):
+        """Parse block 27 from test3.dna"""
+        from sgffp.reader import SgffReader
+
+        sgff = SgffReader.from_file(test3_dna)
+        assert 27 in sgff.blocks
+        data = sgff.blocks[27][0]
+        assert data["header"].startswith("@HD")
+        assert len(data["references"]) == 1
+        assert data["references"][0]["name"] == "reference"
+        assert data["references"][0]["length"] == 154
+        assert len(data["records"]) == 1
+        rec = data["records"][0]
+        assert rec["read_name"] == "0"
+        assert rec["cigar"] == "3S154M6S"
+        assert len(rec["sequence"]) == 163
+        assert rec["flag"] == 0
+        assert rec["pos"] == 0
+
+    def test_parse_bad_magic(self):
+        """Non-BGZF data returns None"""
+        result = parse_trace_alignment(b"not bgzf data")
+        assert result is None
+
+    def test_parse_empty(self):
+        """Empty data returns None"""
+        result = parse_trace_alignment(b"")
+        assert result is None
+
+    def test_scheme_has_block_27(self):
+        """Block 27 uses parse_trace_alignment"""
+        assert SCHEME[27] == parse_trace_alignment

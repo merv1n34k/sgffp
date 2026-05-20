@@ -49,6 +49,7 @@ All lazily loaded and cached. Call `invalidate()` to reset.
 | `alignments` | `SgffAlignmentList` | Alignable sequences |
 | `traces` | `SgffTraceList` | Chromatogram traces |
 | `attachments` | `SgffAttachmentList` | File attachments |
+| `trace_alignment` | `SgffTraceAlignment` | Trace alignment (BAM) data |
 | `ops` | `SgffOps` | Operations API |
 
 ### Existence Checks
@@ -63,6 +64,7 @@ All lazily loaded and cached. Call `invalidate()` to reset.
 | `has_alignments` | 17 |
 | `has_traces` | 16 |
 | `has_attachments` | 23 |
+| `has_trace_alignment` | 27 |
 
 ### Block Access Methods
 

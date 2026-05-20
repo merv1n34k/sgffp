@@ -31,6 +31,9 @@ from .models import (
     SgffTraceSamples,
     SgffAttachment,
     SgffAttachmentList,
+    SgffTraceAlignment,
+    SgffBamRecord,
+    SgffBamReference,
     SgffOps,
 )
 
@@ -65,5 +68,8 @@ __all__ = [
     "SgffTraceSamples",
     "SgffAttachment",
     "SgffAttachmentList",
+    "SgffTraceAlignment",
+    "SgffBamRecord",
+    "SgffBamReference",
     "SgffOps",
 ]
