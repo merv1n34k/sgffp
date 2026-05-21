@@ -16,7 +16,7 @@ from .parsers import SCHEME
 
 PARSED_BLOCKS = set(SCHEME.keys())
 # Known block types intentionally not parsed (SnapGene regenerates on import)
-UNDECODED_BLOCKS = {2, 3, 13}
+UNDECODED_BLOCKS = {2, 3, 13, 35}
 
 
 def _open_input(path):

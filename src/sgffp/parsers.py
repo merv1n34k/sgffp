@@ -766,7 +766,7 @@ def parse_trace_alignment(data: bytes) -> Optional[Dict[str, Any]]:
 # =============================================================================
 
 # Format: block_type -> parser_function
-# Known blocks are parsed; unknown blocks (2, 3, 13) are skipped
+# Known blocks are parsed; unknown blocks (2, 3, 13, 35) are skipped
 # as SnapGene regenerates them on import.
 SCHEME: Dict[int, Callable] = {
     0: parse_sequence,  # DNA
