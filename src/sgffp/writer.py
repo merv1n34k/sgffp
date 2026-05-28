@@ -16,6 +16,23 @@ from .internal import SgffObject
 
 # Uppercase keys that are XML attributes, not child elements
 _UPPERCASE_ATTRS = {"ID"}
+_FORMAT2_DNA_BASES = frozenset("ACGT")
+_FORMAT2_DNA_CHUNK_OPCODE = 0x01
+_FORMAT2_IUPAC_RUN_OPCODE = 0x02
+_FORMAT2_N_RUN_OPCODE = 0x03
+_FORMAT2_IUPAC_TO_CODE = {
+    "N": 0x04,
+    "B": 0x05,
+    "D": 0x06,
+    "H": 0x07,
+    "K": 0x08,
+    "M": 0x09,
+    "R": 0x0A,
+    "S": 0x0B,
+    "V": 0x0C,
+    "W": 0x0D,
+    "Y": 0x0E,
+}
 
 
 def _qual_value_to_xml(v: object) -> dict:
@@ -226,6 +243,90 @@ class SgffWriter:
             result.append(byte)
 
         return bytes(result)
+
+    @staticmethod
+    def _format2_lowercase_spans(sequence: str) -> list[tuple[int, int]]:
+        """Collect inclusive lowercase spans for format version 2 payloads."""
+        spans = []
+        start = None
+
+        for index, base in enumerate(sequence):
+            if base.islower():
+                if start is None:
+                    start = index
+            elif start is not None:
+                spans.append((start, index - 1))
+                start = None
+
+        if start is not None:
+            spans.append((start, len(sequence) - 1))
+
+        return spans
+
+    @staticmethod
+    def _encode_format2_iupac_run(sequence: str) -> bytes:
+        """Encode an ambiguity run using format version 2 IUPAC nibbles."""
+        result = bytearray()
+
+        for index in range(0, len(sequence), 2):
+            first = _FORMAT2_IUPAC_TO_CODE[sequence[index]]
+            if index + 1 < len(sequence):
+                second = _FORMAT2_IUPAC_TO_CODE[sequence[index + 1]]
+                result.append((first << 4) | second)
+            else:
+                result.append(first)
+
+        return bytes(result)
+
+    def _serialize_format2_payload(self, sequence: str) -> bytes:
+        """Serialize a format version 2 DNA payload with ambiguity and case."""
+        upper_sequence = sequence.upper()
+        payload = bytearray()
+        offset = 0
+
+        while (
+            offset < len(upper_sequence)
+            and upper_sequence[offset] in _FORMAT2_DNA_BASES
+        ):
+            offset += 1
+        if offset:
+            payload.extend(self._dna_to_octet(upper_sequence[:offset]))
+
+        while offset < len(upper_sequence):
+            amb_start = offset
+            while (
+                offset < len(upper_sequence)
+                and upper_sequence[offset] not in _FORMAT2_DNA_BASES
+            ):
+                offset += 1
+            ambiguity = upper_sequence[amb_start:offset]
+            if set(ambiguity) == {"N"}:
+                payload.append(_FORMAT2_N_RUN_OPCODE)
+                payload.extend(struct.pack(">I", len(ambiguity)))
+            else:
+                payload.append(_FORMAT2_IUPAC_RUN_OPCODE)
+                payload.extend(struct.pack(">I", len(ambiguity)))
+                payload.extend(self._encode_format2_iupac_run(ambiguity))
+
+            if offset >= len(upper_sequence):
+                break
+
+            dna_start = offset
+            while (
+                offset < len(upper_sequence)
+                and upper_sequence[offset] in _FORMAT2_DNA_BASES
+            ):
+                offset += 1
+            dna_chunk = upper_sequence[dna_start:offset]
+            payload.append(_FORMAT2_DNA_CHUNK_OPCODE)
+            payload.extend(struct.pack(">I", len(dna_chunk)))
+            payload.extend(self._dna_to_octet(dna_chunk))
+
+        for start, end in self._format2_lowercase_spans(sequence):
+            payload.extend(struct.pack(">I", start))
+            payload.extend(struct.pack(">I", end))
+
+        return bytes(payload)
 
     def _serialize_features(self, data: Dict) -> bytes:
         """Serialize features to XML."""
@@ -495,7 +596,10 @@ class SgffWriter:
         if seq_type == 1:
             # Compressed DNA with decoded metadata header
             sequence = data.get("sequence", "")
-            encoded = self._dna_to_octet(sequence)
+            if data.get("format_version") == 2:
+                encoded = self._serialize_format2_payload(sequence)
+            else:
+                encoded = self._dna_to_octet(sequence)
             compressed_length = 4 + 14 + len(encoded)
 
             buf.write(struct.pack(">I", compressed_length))

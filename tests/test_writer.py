@@ -368,6 +368,52 @@ class TestSgffWriterCompressedDna:
         assert 1 in sgff.blocks
         assert sgff.blocks[1][0]["sequence"] == "GATCGATC"
 
+    def test_write_format2_history_node_preserves_lowercase(self, sample_cookie):
+        """Format version 2 history payload preserves lowercase spans."""
+        obj = SgffObject(cookie=sample_cookie)
+        obj.blocks = {
+            11: [
+                {
+                    "node_index": 0,
+                    "sequence_type": 1,
+                    "sequence": "acgtACGTacgtACGT",
+                    "length": 16,
+                    "format_version": 2,
+                    "strandedness_flag": 1,
+                    "property_flags": 1,
+                    "header_seq_length": 16,
+                }
+            ]
+        }
+
+        data = SgffWriter.to_bytes(obj)
+        sgff = SgffReader.from_bytes(data)
+
+        assert sgff.blocks[11][0]["sequence"] == "acgtACGTacgtACGT"
+
+    def test_write_format2_history_node_preserves_ambiguity_and_case(self, sample_cookie):
+        """Format version 2 history payload preserves ambiguity and case."""
+        obj = SgffObject(cookie=sample_cookie)
+        obj.blocks = {
+            11: [
+                {
+                    "node_index": 0,
+                    "sequence_type": 1,
+                    "sequence": "ACGTNNnnNNacGTac",
+                    "length": 16,
+                    "format_version": 2,
+                    "strandedness_flag": 1,
+                    "property_flags": 1,
+                    "header_seq_length": 16,
+                }
+            ]
+        }
+
+        data = SgffWriter.to_bytes(obj)
+        sgff = SgffReader.from_bytes(data)
+
+        assert sgff.blocks[11][0]["sequence"] == "ACGTNNnnNNacGTac"
+
 
 # =============================================================================
 # XML Block Tests

@@ -96,6 +96,103 @@ Total bytes = ceil(uncompressed_length * 2 / 8).
 
 When the final byte holds fewer than 4 bases, SnapGene right-aligns that partial tail in the low bits of the byte. For example, a 3-base tail uses bit pairs at offsets 4, 2, and 0.
 
+#### Format Version 2 History Variant
+
+When `format_version == 2`, the history snapshot does **not** store the whole
+sequence as one flat 2-bit stream. It uses a mixed payload made of:
+
+1. a normal 2-bit DNA chunk for the first stretch that only contains `A/C/G/T`
+2. one or more instructions for ambiguous bases such as `N`, `W`, `R`, `Y`, etc.
+3. optional extra 2-bit DNA chunks after those ambiguity runs
+4. lowercase span metadata at the end
+
+In plain language, SnapGene stores the easy parts as normal DNA, and only switches to a small side format when it needs to represent ambiguity codes or lowercase letters.
+
+Observed instruction opcodes:
+
+| Opcode | Meaning                              |
+| ------ | ------------------------------------ |
+| `0x01` | Next chunk is plain `A/C/G/T` DNA    |
+| `0x02` | Next chunk is an ambiguity/IUPAC run |
+| `0x03` | Next chunk is a run of `N`           |
+
+For opcodes `0x01`, `0x02`, and `0x03`, the opcode is followed by a 4-byte big-endian base count.
+
+##### `0x01` — Plain DNA chunk
+
+After the count, SnapGene stores that many bases using the normal 2-bit `G/A/T/C` packing described above.
+
+##### `0x02` — Ambiguity/IUPAC run
+
+After the count, SnapGene stores ambiguity symbols packed as 4-bit nibbles, two symbols per byte.
+
+Observed code mapping:
+
+| Nibble | Symbol |
+| ------ | ------ |
+| `0x04` | `N`    |
+| `0x05` | `B`    |
+| `0x06` | `D`    |
+| `0x07` | `H`    |
+| `0x08` | `K`    |
+| `0x09` | `M`    |
+| `0x0A` | `R`    |
+| `0x0B` | `S`    |
+| `0x0C` | `V`    |
+| `0x0D` | `W`    |
+| `0x0E` | `Y`    |
+
+If the run length is odd, the final symbol uses the low nibble of the last byte.
+
+##### `0x03` — `N` run
+
+This is a compact shortcut for a run of `N` bases. After the 4-byte count there is no extra symbol data; the count alone tells you how many `N` characters to append.
+
+##### Lowercase span metadata
+
+Any bytes left after the instruction stream are lowercase spans stored as big-endian uint32 start/end pairs:
+
+| Field | Size | Description             |
+| ----- | ---- | ----------------------- |
+| start | 4    | 0-based inclusive start |
+| end   | 4    | 0-based inclusive end   |
+
+Each pair means “make this range lowercase after decoding the sequence text”.
+
+Example:
+
+- decoded uppercase sequence: `ACGTNNNNACGT`
+- span pair `(4, 7)`
+- final sequence: `ACGTnnnnACGT`
+
+##### Practical decoding approach
+
+The format version 2 payload does not explicitly say how long the first plain
+DNA chunk is, so the parser has to infer it.
+
+The successful strategy used in `sgffp` is:
+
+1. try possible lengths for the initial plain `A/C/G/T` chunk
+2. parse the rest as opcode/count records
+3. stop when the rebuilt sequence reaches the expected base count
+4. treat any remaining bytes as lowercase span pairs
+5. accept the parse only if the final sequence length and span structure are both valid
+
+This keeps the format version 2 history sequence self-contained. It does not
+need any fallback from block 0 or from the history tree model.
+
+##### Practical encoding approach
+
+When writing `format_version == 2` history nodes, `sgffp` rebuilds the payload
+from the decoded sequence string:
+
+1. emit the first `A/C/G/T` stretch as plain 2-bit DNA
+2. emit ambiguity runs as either `0x02` IUPAC runs or `0x03` `N` runs
+3. emit later `A/C/G/T` stretches as `0x01` DNA chunks
+4. append lowercase start/end span pairs at the end
+
+That is enough to round-trip both ambiguity symbols and capitalization without relying on preserved raw bytes.
+
 ### Block 5 — Primers (XML)
 
 XML block parsed by `xmltodict`. Top-level element: `<Primers>`.

@@ -60,7 +60,31 @@ Parse uncompressed sequence (blocks 0, 21, 32). Returns:
 
 ### `parse_compressed_dna(data) → Dict`
 
-Parse 2-bit GATC-encoded DNA (block 1). Returns sequence plus metadata header fields (`format_version`, `strandedness_flag`, `property_flags`, `header_seq_length`).
+Parse compressed DNA (block 1). One format is a plain 2-bit GATC stream. When
+`format_version == 2`, the parser instead uses the mixed history payload
+format:
+
+- a leading plain `A/C/G/T` chunk
+- opcode-based ambiguity runs (`0x02`)
+- compact `N` runs (`0x03`)
+- optional later DNA chunks (`0x01`)
+- trailing lowercase span pairs
+
+Returns sequence plus metadata header fields (`format_version`, `strandedness_flag`, `property_flags`, `header_seq_length`).
+
+### Format Version 2 History Decoding
+
+The main reverse-engineering result for `format_version == 2` history DNA is
+that the extra bytes after the core 2-bit data are not noise and are not copied
+from block 0. They are part of the history snapshot itself.
+
+In plain language:
+
+- normal bases are stored compactly as 2-bit DNA
+- ambiguous bases are stored as short instructions
+- lowercase is stored separately as position ranges
+
+The parser decodes those pieces independently and then combines them into the final sequence string. This is why a history node can now correctly return values such as lowercase DNA or `W/S/M/K/R/Y/B/D/H/V/N` directly from block 11.
 
 ### `parse_xml(data) → Dict | None`
 
