@@ -5,7 +5,7 @@ Tests for parser functions in sgffp.parsers
 import struct
 import lzma
 from io import BytesIO
-
+from pathlib import Path
 
 from sgffp.parsers import (
     parse_blocks,
@@ -218,6 +218,50 @@ class TestParseCompressedDna:
         assert result["strandedness_flag"] == 1
         assert result["property_flags"] == 1
         assert result["header_seq_length"] == 4
+
+    def test_parse_compressed_dna_format2_ambiguity_run(self):
+        """Format version 2 decodes explicit IUPAC runs separately."""
+        header = bytearray(14)
+        header[0] = 2
+
+        payload = bytes.fromhex("720200000008dddddddd010000000472")
+        data = (
+            struct.pack(">I", 4 + 14 + len(payload))
+            + struct.pack(">I", 16)
+            + bytes(header)
+            + payload
+        )
+
+        result = parse_compressed_dna(data)
+
+        assert result["sequence"] == "ACGTWWWWWWWWACGT"
+        assert result["length"] == 16
+        assert result["format_version"] == 2
+
+    def test_parse_compressed_dna_format2_lowercase_spans(self):
+        """Format version 2 applies lowercase spans after ambiguity decoding.
+
+        The lowercase metadata trails the format 2 chunk stream as BE pairs.
+        """
+        header = bytearray(14)
+        header[0] = 2
+
+        payload = bytes.fromhex(
+            "72030000000601000000067207"
+            "00000006000000070000000a0000000b0000000e0000000f"
+        )
+        data = (
+            struct.pack(">I", 4 + 14 + len(payload))
+            + struct.pack(">I", 16)
+            + bytes(header)
+            + payload
+        )
+
+        result = parse_compressed_dna(data)
+
+        assert result["sequence"] == "ACGTNNnnNNacGTac"
+        assert result["length"] == 16
+        assert result["format_version"] == 2
 
 
 # =============================================================================

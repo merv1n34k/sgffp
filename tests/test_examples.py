@@ -1,10 +1,11 @@
 from pathlib import Path
 import sgffp
+import glob
 
 test_folder = Path(__file__).parent / "data"
 
 
-class ExampleTest:
+class TestExamples:
     def parse_fasta(self, file_path: Path) -> dict[str, str]:
         key = ""
         out_dict = dict()
@@ -31,3 +32,15 @@ class ExampleTest:
 
         fragment_node = sgff.history.get_node(fragment_tree_node.id)
         assert fragment_node.sequence.upper() == fasta_dict["fragment"].upper()
+
+    def test_example_degenerate_examples(self):
+        """Test a few files that have degenerate sequences, and the history is
+        just a circularization, so the sequence at the root node should be the
+        same as the sequence at the first node.
+        """
+
+        for file in glob.glob(str(test_folder / "degenerate_examples" / "*.dna")):
+            sgff = sgffp.SgffReader.from_file(Path(file))
+            assert sgff.blocks[0][0]["sequence"] == sgff.history.get_sequence_at(
+                0
+            ), f"Sequence mismatch for {file}"

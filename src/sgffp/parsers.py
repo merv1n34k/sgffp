@@ -67,6 +67,141 @@ def octet_to_dna(raw_data: bytes, base_count: int) -> bytes:
     return bytes(result[:base_count])
 
 
+_FORMAT2_DNA_CHUNK_OPCODE = 0x01
+_FORMAT2_IUPAC_RUN_OPCODE = 0x02
+_FORMAT2_N_RUN_OPCODE = 0x03
+_FORMAT2_IUPAC_CODES = {
+    0x04: "N",
+    0x05: "B",
+    0x06: "D",
+    0x07: "H",
+    0x08: "K",
+    0x09: "M",
+    0x0A: "R",
+    0x0B: "S",
+    0x0C: "V",
+    0x0D: "W",
+    0x0E: "Y",
+}
+
+
+def _decode_format2_iupac_run(data: bytes, count: int) -> Optional[str]:
+    """Decode a format version 2 nibble-packed IUPAC run."""
+    needed = (count + 1) // 2
+    if len(data) < needed:
+        return None
+
+    symbols = []
+    full_bytes = count // 2
+
+    for i in range(full_bytes):
+        byte = data[i]
+        high = _FORMAT2_IUPAC_CODES.get((byte >> 4) & 0x0F)
+        low = _FORMAT2_IUPAC_CODES.get(byte & 0x0F)
+        if high is None or low is None:
+            return None
+        symbols.append(high)
+        symbols.append(low)
+
+    if count % 2:
+        final_symbol = _FORMAT2_IUPAC_CODES.get(data[needed - 1] & 0x0F)
+        if final_symbol is None:
+            return None
+        symbols.append(final_symbol)
+
+    return "".join(symbols)
+
+
+def _decode_format2_lowercase_spans(data: bytes, seq_length: int) -> Optional[List[Tuple[int, int]]]:
+    """Decode format version 2 lowercase span pairs as BE start/end pairs."""
+    if len(data) % 8 != 0:
+        return None
+
+    spans: List[Tuple[int, int]] = []
+    for offset in range(0, len(data), 8):
+        start = struct.unpack(">I", data[offset : offset + 4])[0]
+        end = struct.unpack(">I", data[offset + 4 : offset + 8])[0]
+        if start > end or end >= seq_length:
+            return None
+        spans.append((start, end))
+
+    return spans
+
+
+def _apply_lowercase_spans(sequence: str, spans: List[Tuple[int, int]]) -> str:
+    """Apply inclusive lowercase spans to a decoded sequence."""
+    chars = list(sequence)
+    for start, end in spans:
+        for i in range(start, end + 1):
+            chars[i] = chars[i].lower()
+    return "".join(chars)
+
+
+def _parse_format2_payload(payload: bytes, seq_length: int) -> Optional[str]:
+    """Parse the format version 2 mixed DNA payload."""
+    for initial_len in range(seq_length, -1, -1):
+        initial_bytes = (initial_len * 2 + 7) // 8
+        if initial_bytes > len(payload):
+            continue
+
+        prefix = octet_to_dna(payload[:initial_bytes], initial_len).decode("ascii")
+        sequence = prefix
+        offset = initial_bytes
+
+        while offset < len(payload):
+            opcode = payload[offset]
+
+            if opcode not in (_FORMAT2_IUPAC_RUN_OPCODE, _FORMAT2_N_RUN_OPCODE):
+                break
+
+            if offset + 5 > len(payload):
+                sequence = ""
+                break
+
+            count = struct.unpack(">I", payload[offset + 1 : offset + 5])[0]
+            offset += 5
+
+            if opcode == _FORMAT2_N_RUN_OPCODE:
+                sequence += "N" * count
+            else:
+                needed = (count + 1) // 2
+                run = _decode_format2_iupac_run(
+                    payload[offset : offset + needed], count
+                )
+                if run is None:
+                    sequence = ""
+                    break
+                sequence += run
+                offset += needed
+
+            if (
+                offset < len(payload)
+                and payload[offset] == _FORMAT2_DNA_CHUNK_OPCODE
+            ):
+                if offset + 5 > len(payload):
+                    sequence = ""
+                    break
+                dna_len = struct.unpack(">I", payload[offset + 1 : offset + 5])[0]
+                offset += 5
+                dna_bytes = (dna_len * 2 + 7) // 8
+                if offset + dna_bytes > len(payload):
+                    sequence = ""
+                    break
+                sequence += octet_to_dna(payload[offset : offset + dna_bytes], dna_len).decode("ascii")
+                offset += dna_bytes
+
+        if not sequence or len(sequence) != seq_length:
+            continue
+
+        lowercase = _decode_format2_lowercase_spans(payload[offset:], seq_length)
+        if lowercase is None:
+            continue
+
+        return _apply_lowercase_spans(sequence, lowercase)
+
+    return None
+
+
 # =============================================================================
 # SEQUENCE PARSERS
 # =============================================================================
@@ -107,11 +242,19 @@ def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
     property_flags = struct.unpack(">H", header[8:10])[0]
     header_seq_length = struct.unpack(">H", header[12:14])[0]
 
-    total_bytes = (uncompressed_length * 2 + 7) // 8
-    seq_data = data[offset : offset + total_bytes]
+    payload = data[offset : offset + _compressed_length - 4 - 14]
+
+    if format_version == 2:
+        sequence = _parse_format2_payload(payload, uncompressed_length)
+        if sequence is None:
+            sequence = octet_to_dna(payload, uncompressed_length).decode("ascii")
+    else:
+        total_bytes = (uncompressed_length * 2 + 7) // 8
+        seq_data = payload[:total_bytes]
+        sequence = octet_to_dna(seq_data, uncompressed_length).decode("ascii")
 
     return {
-        "sequence": octet_to_dna(seq_data, uncompressed_length).decode("ascii"),
+        "sequence": sequence,
         "length": uncompressed_length,
         "format_version": format_version,
         "strandedness_flag": strandedness_flag,
