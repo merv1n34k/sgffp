@@ -1522,15 +1522,12 @@ class TestSgffHistorySnapshot:
         assert node.content.has_features
 
     def test_snapshot_compressed_dna(self):
-        """Compressed DNA metadata preserved in snapshot"""
+        """Compressed-DNA snapshot keeps the source's writer_stamp."""
         blocks = {
             1: [{
                 "sequence": "GATCGATC",
                 "length": 8,
-                "format_version": 30,
-                "strandedness_flag": 1,
-                "property_flags": 3,
-                "header_seq_length": 8,
+                "writer_stamp": 31,
             }],
             7: [{"HistoryTree": {"Node": {
                 "ID": "5", "name": "comp.dna", "type": "DNA",
@@ -1542,9 +1539,7 @@ class TestSgffHistorySnapshot:
         node = history.snapshot_current_state(blocks)
 
         assert node.sequence_type == 1
-        assert node.format_version == 30
-        assert node.property_flags == 3
-        assert node.header_seq_length == 8
+        assert node.writer_stamp == 31
         assert node.index == 5
 
     def test_snapshot_empty_content(self):

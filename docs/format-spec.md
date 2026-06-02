@@ -62,39 +62,73 @@ Uncompressed DNA sequence with property flags.
 
 ### Block 1 — Compressed DNA Sequence
 
-2-bit encoded DNA used in history nodes for compact storage.
+Compact encoding for sequences that may contain plain DNA, IUPAC ambiguity
+codes, all-N runs, and lowercase ranges. Used for snapshots inside block 11
+history nodes, and (rarely) as a top-level block 1.
+
+The payload is a chain of self-describing **sections** followed by optional
+lowercase range pairs. A small descriptor at the front of the block tells
+the decoder how many sections to read, how many lowercase ranges follow, and
+the type+length of the first section.
+
+```
+[cl][ul][stamp][chunks][lowercases][marker][count][section data...][lowercase pairs...]
+ 4   4    1       4         4         1      4
+```
 
 | Offset | Size | Description |
 |--------|------|-------------|
-| 0 | 4 | `compressed_length` (big-endian uint32) — total bytes of remaining data |
-| 4 | 4 | `uncompressed_length` (big-endian uint32) — number of bases |
-| 8 | 14 | Metadata header (see below) |
-| 22 | N | 2-bit GATC-encoded sequence data |
+| 0  | 4 | `cl` — outer compressed length (big-endian uint32) |
+| 4  | 4 | `ul` — final decoded character count (big-endian uint32) |
+| 8  | 1 | `writer_stamp` — opaque writer-side byte (SnapGene's parser ignores it; preserved for round-trip) |
+| 9  | 4 | `chunks` — section count (big-endian uint32) |
+| 13 | 4 | `lowercases` — lowercase pair count (big-endian uint32) |
+| 17 | 1 | `marker` — first section's type marker (0x01 / 0x02 / 0x03) |
+| 18 | 4 | `count` — first section's character count (big-endian uint32) |
+| 22 | … | section data, then any remaining sections, then lowercase pairs |
 
-**14-byte metadata header:**
+Every section beyond the first is introduced by its own 5-byte frame: a
+1-byte marker plus a big-endian uint32 character count, followed by the
+section's data bytes (if any).
 
-| Offset | Size | Description |
-|--------|------|-------------|
-| 0 | 1 | `format_version` — typically 30 (0x1e) |
-| 1 | 3 | Reserved (always 0x000000) |
-| 4 | 1 | `strandedness_flag` — 1 = double-stranded |
-| 5 | 3 | Reserved (always 0x000000) |
-| 8 | 2 | `property_flags` (big-endian uint16) — 1 = default, 257 = extended |
-| 10 | 2 | Reserved (always 0x0000) |
-| 12 | 2 | `header_seq_length` (big-endian uint16) — matches `uncompressed_length` |
+**Section markers:**
 
-**2-bit encoding** (2 bits per base, 4 bases per byte, MSB first for full bytes):
+| Marker | Meaning | Data bytes |
+|--------|---------|------------|
+| `0x01` | Plain DNA — 2-bit GATC packed | `ceil(count * 2 / 8)` |
+| `0x02` | IUPAC ambiguity codes — 4-bit nibble per char | `ceil(count / 2)` |
+| `0x03` | All-N run | none |
 
-| Bits | Base |
-|------|------|
-| 00 | G |
-| 01 | A |
-| 10 | T |
-| 11 | C |
+**2-bit DNA encoding** (used inside `0x01` sections, MSB first; the final
+byte right-aligns a partial tail):
 
-Total bytes = ceil(uncompressed_length * 2 / 8).
+| Bits | Base | Bits | Base |
+|------|------|------|------|
+| 00 | G | 10 | T |
+| 01 | A | 11 | C |
 
-When the final byte holds fewer than 4 bases, SnapGene right-aligns that partial tail in the low bits of the byte. For example, a 3-base tail uses bit pairs at offsets 4, 2, and 0.
+**4-bit IUPAC encoding** (used inside `0x02` sections, two nibbles per byte,
+high nibble first):
+
+| Nibble | Code | Nibble | Code |
+|--------|------|--------|------|
+| 0x4 | N | 0xA | R |
+| 0x5 | B | 0xB | S |
+| 0x6 | D | 0xC | V |
+| 0x7 | H | 0xD | W |
+| 0x8 | K | 0xE | Y |
+| 0x9 | M | | |
+
+**Lowercase pairs** (trailing the section data): `lowercases` × 8 bytes,
+each pair encoding `(start, end)` as big-endian uint32s. Each pair
+lowercases the inclusive character range `[start..end]` of the assembled
+sequence.
+
+A sequence of pure `A/C/G/T` collapses to a single `0x01` section, no
+lowercase pairs — the byte layout becomes equivalent to flat 2-bit packed
+DNA, plus the fixed-size descriptor. Files containing ambiguity codes or
+lowercase ranges use additional sections and pairs as needed; the same
+parser handles every case.
 
 ### Block 5 — Primers (XML)
 

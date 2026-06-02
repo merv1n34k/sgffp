@@ -503,10 +503,7 @@ class SgffOps:
                 "sequence": seq,
                 "sequence_type": 1,  # compressed DNA
                 "length": len(seq),
-                "format_version": 30,
-                "strandedness_flag": 1 if spec.get("strandedness", "double") == "double" else 0,
-                "property_flags": 1,
-                "header_seq_length": min(len(seq), 65535),
+                "writer_stamp": 30,
             }
             block11_snapshots.append(SgffHistoryNode.from_dict(snapshot_dict))
 
@@ -610,7 +607,6 @@ class SgffOps:
             if existing:
                 existing.sequence = new_seq
                 existing.length = len(new_seq)
-                existing.header_seq_length = min(len(new_seq), 65535)
                 history._sync_nodes()
             else:
                 snapshot_dict = {
@@ -618,12 +614,7 @@ class SgffOps:
                     "sequence": new_seq,
                     "sequence_type": 1,
                     "length": len(new_seq),
-                    "format_version": 30,
-                    "strandedness_flag": 1
-                    if tree_node.strandedness == "double"
-                    else 0,
-                    "property_flags": 1,
-                    "header_seq_length": min(len(new_seq), 65535),
+                    "writer_stamp": 30,
                 }
                 history.add_node(SgffHistoryNode.from_dict(snapshot_dict))
 

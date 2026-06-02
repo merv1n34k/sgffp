@@ -72,7 +72,7 @@ SnapGene files use a **TLV (Type-Length-Value)** binary format after a 19-byte h
 | ID | Block Type | Format | Model |
 |----|------------|--------|-------|
 | 0 | DNA Sequence | UTF-8 | SgffSequence |
-| 1 | Compressed DNA | 2-bit GATC | SgffSequence |
+| 1 | Compressed DNA | Section-based (2-bit DNA / IUPAC / N-run + lowercase) | SgffSequence |
 | 5 | Primers | XML | SgffPrimerList |
 | 6 | Notes | XML | SgffNotes |
 | 7 | History Tree | LZMA + XML | SgffHistory |
