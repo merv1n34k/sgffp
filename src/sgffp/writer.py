@@ -186,46 +186,145 @@ class SgffWriter:
         sequence = data.get("sequence", "")
         return bytes([props]) + sequence.encode("utf-8")
 
-    def _serialize_compressed_dna(self, data: Dict) -> bytes:
-        """Serialize compressed DNA block."""
-        sequence = data.get("sequence", "")
-        length = len(sequence)
-
-        # Reconstruct 14-byte metadata header from decoded fields
-        header = bytearray(14)
-        header[0] = data.get("format_version", 30)
-        header[4] = data.get("strandedness_flag", 1)
-        struct.pack_into(">H", header, 8, data.get("property_flags", 1))
-        struct.pack_into(">H", header, 12, data.get("header_seq_length", length))
-
-        # Encode sequence to 2-bit
-        encoded = self._dna_to_octet(sequence)
-
-        # compressed_length = 4 (uncompressed_length) + 14 (header) + len(encoded)
-        compressed_length = 4 + 14 + len(encoded)
-
-        buf = BytesIO()
-        buf.write(struct.pack(">I", compressed_length))
-        buf.write(struct.pack(">I", length))
-        buf.write(bytes(header))
-        buf.write(encoded)
-
-        return buf.getvalue()
+    _DNA_BASES = frozenset("ACGT")
+    _IUPAC_BASES = frozenset("BDHKMRSVWY")  # N handled separately as 0x03 N-run
 
     def _dna_to_octet(self, sequence: str) -> bytes:
-        """Convert DNA sequence to 2-bit encoding"""
+        """Convert ACGT-only sequence to 2-bit GATC packed bytes."""
         base_map = {"G": 0, "A": 1, "T": 2, "C": 3}
         result = bytearray()
-
         for i in range(0, len(sequence), 4):
-            chunk = sequence[i : i + 4]
+            chunk = sequence[i:i + 4]
             byte = 0
-            shifts = [6, 4, 2, 0] if len(chunk) == 4 else [6, 4, 2, 0][-len(chunk) :]
+            shifts = [6, 4, 2, 0] if len(chunk) == 4 else [6, 4, 2, 0][-len(chunk):]
             for base, shift in zip(chunk, shifts):
                 byte |= base_map.get(base.upper(), 0) << shift
             result.append(byte)
-
         return bytes(result)
+
+    @staticmethod
+    def _iupac_to_nibble_bytes(chars: str) -> bytes:
+        """Pack IUPAC ambiguity codes 4-bit per char (2 chars per byte)."""
+        from .parsers import _IUPAC_TO_NIBBLE
+        result = bytearray()
+        n = len(chars)
+        full = n // 2
+        for i in range(full):
+            h = _IUPAC_TO_NIBBLE.get(chars[i * 2].upper(), 0x04)
+            low = _IUPAC_TO_NIBBLE.get(chars[i * 2 + 1].upper(), 0x04)
+            result.append((h << 4) | low)
+        if n % 2:
+            result.append(_IUPAC_TO_NIBBLE.get(chars[-1].upper(), 0x04))
+        return bytes(result)
+
+    @classmethod
+    def _split_into_sections(cls, sequence: str):
+        """Split (uppercased) sequence into a list of (marker, chars) sections.
+
+        Plain ACGT runs become 0x01 sections; pure-N runs become 0x03; other
+        IUPAC ambiguity runs become 0x02. Any unrecognised character falls
+        back to a plain section to keep encoding total.
+        """
+        upper = sequence.upper()
+        n = len(upper)
+        sections = []
+        i = 0
+        while i < n:
+            ch = upper[i]
+            if ch in cls._DNA_BASES:
+                j = i
+                while j < n and upper[j] in cls._DNA_BASES:
+                    j += 1
+                sections.append((0x01, upper[i:j]))
+            elif ch == "N":
+                j = i
+                while j < n and upper[j] == "N":
+                    j += 1
+                sections.append((0x03, upper[i:j]))
+            elif ch in cls._IUPAC_BASES:
+                j = i
+                while j < n and upper[j] in cls._IUPAC_BASES:
+                    j += 1
+                sections.append((0x02, upper[i:j]))
+            else:
+                sections.append((0x01, ch))
+                j = i + 1
+            i = j
+        return sections
+
+    @staticmethod
+    def _find_lowercase_ranges(sequence: str):
+        """Return inclusive (start, end) ranges of lowercase character runs."""
+        ranges = []
+        start = None
+        for i, c in enumerate(sequence):
+            if c.islower():
+                if start is None:
+                    start = i
+            elif start is not None:
+                ranges.append((start, i - 1))
+                start = None
+        if start is not None:
+            ranges.append((start, len(sequence) - 1))
+        return ranges
+
+    def _encode_compressed_dna_payload(self, sequence: str, writer_stamp: int) -> bytes:
+        """Build the full compressed-DNA block: outer wrapper + descriptor + payload."""
+        length = len(sequence)
+        sections = self._split_into_sections(sequence)
+        lowercase = self._find_lowercase_ranges(sequence)
+
+        if not sections:
+            sections = [(0x01, "")]  # degenerate empty case
+
+        first_marker, first_chars = sections[0]
+        first_count = len(first_chars)
+
+        body = BytesIO()
+        # first section's data (no inline frame — its frame lives in the header)
+        if first_marker == 0x01:
+            body.write(self._dna_to_octet(first_chars))
+        elif first_marker == 0x02:
+            body.write(self._iupac_to_nibble_bytes(first_chars))
+        # 0x03 N-run: zero data bytes
+
+        # remaining sections: each carries its own marker + count + data
+        for marker, chars in sections[1:]:
+            body.write(bytes([marker]))
+            body.write(struct.pack(">I", len(chars)))
+            if marker == 0x01:
+                body.write(self._dna_to_octet(chars))
+            elif marker == 0x02:
+                body.write(self._iupac_to_nibble_bytes(chars))
+
+        # lowercase ranges
+        for start, end in lowercase:
+            body.write(struct.pack(">I", start))
+            body.write(struct.pack(">I", end))
+
+        payload = body.getvalue()
+
+        # 14-byte descriptor
+        header = bytearray(14)
+        header[0] = writer_stamp & 0xFF
+        struct.pack_into(">I", header, 1, len(sections))
+        struct.pack_into(">I", header, 5, len(lowercase))
+        header[9] = first_marker
+        struct.pack_into(">I", header, 10, first_count)
+
+        compressed_length = 4 + 14 + len(payload)
+        out = BytesIO()
+        out.write(struct.pack(">I", compressed_length))
+        out.write(struct.pack(">I", length))
+        out.write(bytes(header))
+        out.write(payload)
+        return out.getvalue()
+
+    def _serialize_compressed_dna(self, data: Dict) -> bytes:
+        """Serialize a top-level compressed DNA block (type 1)."""
+        return self._encode_compressed_dna_payload(
+            data.get("sequence", ""), data.get("writer_stamp", 30)
+        )
 
     def _serialize_features(self, data: Dict) -> bytes:
         """Serialize features to XML."""
@@ -493,24 +592,10 @@ class SgffWriter:
         buf.write(bytes([seq_type]))
 
         if seq_type == 1:
-            # Compressed DNA with decoded metadata header
-            sequence = data.get("sequence", "")
-            encoded = self._dna_to_octet(sequence)
-            compressed_length = 4 + 14 + len(encoded)
-
-            buf.write(struct.pack(">I", compressed_length))
-            buf.write(struct.pack(">I", len(sequence)))
-
-            # Reconstruct 14-byte metadata header
-            header = bytearray(14)
-            header[0] = data.get("format_version", 30)
-            header[4] = data.get("strandedness_flag", 1)
-            struct.pack_into(">H", header, 8, data.get("property_flags", 1))
-            struct.pack_into(
-                ">H", header, 12, data.get("header_seq_length", len(sequence))
-            )
-            buf.write(bytes(header))
-            buf.write(encoded)
+            # Compressed DNA — built from the sequence using section-based encoding
+            buf.write(self._encode_compressed_dna_payload(
+                data.get("sequence", ""), data.get("writer_stamp", 30)
+            ))
 
         elif seq_type in (0, 21, 32):
             # Uncompressed sequence

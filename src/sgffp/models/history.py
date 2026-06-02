@@ -571,11 +571,9 @@ class SgffHistoryNode:
     length: int = 0
     content: Optional[SgffHistoryNodeContent] = None
 
-    # Compressed DNA metadata header fields
-    format_version: int = 30
-    strandedness_flag: int = 1
-    property_flags: int = 1
-    header_seq_length: Optional[int] = None
+    # Opaque writer-side stamp for compressed-DNA snapshots; preserved for
+    # round-trip but plays no role in decoding.
+    writer_stamp: int = 30
 
     # Set by SgffHistory after loading
     tree_node: Optional[SgffHistoryTreeNode] = field(default=None, repr=False)
@@ -619,10 +617,7 @@ class SgffHistoryNode:
             sequence_type=data.get("sequence_type", 0),
             length=data.get("length", 0),
             content=content,
-            format_version=data.get("format_version", 30),
-            strandedness_flag=data.get("strandedness_flag", 1),
-            property_flags=data.get("property_flags", 1),
-            header_seq_length=data.get("header_seq_length"),
+            writer_stamp=data.get("writer_stamp", 30),
         )
 
     def to_dict(self) -> Dict:
@@ -636,16 +631,10 @@ class SgffHistoryNode:
         if self.length:
             result["length"] = self.length
 
-        # Compressed DNA metadata header fields
+        # Preserve writer stamp only — every other compressed-DNA header byte
+        # is derived from the sequence at write time.
         if self.sequence_type == 1:
-            result["format_version"] = self.format_version
-            result["strandedness_flag"] = self.strandedness_flag
-            result["property_flags"] = self.property_flags
-            result["header_seq_length"] = (
-                self.header_seq_length
-                if self.header_seq_length is not None
-                else self.length
-            )
+            result["writer_stamp"] = self.writer_stamp
 
         if self.content and self.content.exists:
             result["node_info"] = self.content.to_dict()
@@ -872,24 +861,15 @@ class SgffHistory(SgffModel):
             node_dict["length"] = seq_model.length
 
         if block_id == 1:
-            # Already compressed DNA — carry forward metadata
+            # Already compressed DNA — carry forward the writer stamp.
             node_dict["sequence_type"] = 1
             raw = blocks.get(1, [{}])[0]
-            node_dict["format_version"] = raw.get("format_version", 30)
-            node_dict["strandedness_flag"] = raw.get("strandedness_flag", 1)
-            node_dict["property_flags"] = raw.get("property_flags", 1)
-            node_dict["header_seq_length"] = raw.get(
-                "header_seq_length", seq_model.length
-            )
+            node_dict["writer_stamp"] = raw.get("writer_stamp", 30)
         elif block_id == 0:
-            # Uncompressed DNA → convert to compressed (seq_type=1)
-            # SnapGene expects history snapshots in compressed format
+            # Uncompressed DNA → snapshot as compressed (seq_type=1) with a
+            # default writer stamp; the writer derives everything else.
             node_dict["sequence_type"] = 1
-            strandedness_flag = 1 if seq_model.strandedness == "double" else 0
-            node_dict["format_version"] = 30
-            node_dict["strandedness_flag"] = strandedness_flag
-            node_dict["property_flags"] = 1
-            node_dict["header_seq_length"] = min(seq_model.length, 65535)
+            node_dict["writer_stamp"] = 30
         else:
             # Protein (21) or RNA (32) — keep as-is
             node_dict["sequence_type"] = block_id if block_id is not None else 0

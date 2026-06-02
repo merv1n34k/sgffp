@@ -60,7 +60,17 @@ Parse uncompressed sequence (blocks 0, 21, 32). Returns:
 
 ### `parse_compressed_dna(data) → Dict`
 
-Parse 2-bit GATC-encoded DNA (block 1). Returns sequence plus metadata header fields (`format_version`, `strandedness_flag`, `property_flags`, `header_seq_length`).
+Parse a compressed-DNA block (top-level type 1 or embedded in block 11). The payload is a chain of self-describing sections — plain DNA (`0x01`), IUPAC ambiguity (`0x02`), all-N runs (`0x03`) — followed by optional lowercase range pairs. Returns:
+
+```python
+{
+    "sequence": str,          # decoded sequence with case applied
+    "length": int,            # uncompressed character count
+    "writer_stamp": int,      # opaque byte preserved for round-trip
+}
+```
+
+See [format spec § Block 1](/format-spec#block-1-compressed-dna-sequence) for the full layout.
 
 ### `parse_xml(data) → Dict | None`
 

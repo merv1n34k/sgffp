@@ -146,10 +146,7 @@ from sgffp import SgffHistoryNode
 | `sequence_type` | `int` | `0` | 0=DNA, 1=compressed, 21=protein, 32=RNA |
 | `length` | `int` | `0` | Sequence length |
 | `content` | `SgffHistoryNodeContent \| None` | `None` | Nested content (features, etc.) |
-| `format_version` | `int` | `30` | Compressed DNA format version |
-| `strandedness_flag` | `int` | `1` | 1=double-stranded |
-| `property_flags` | `int` | `1` | Compressed DNA property flags |
-| `header_seq_length` | `int \| None` | `None` | Header sequence length |
+| `writer_stamp` | `int` | `30` | Opaque writer-side byte for compressed-DNA snapshots (preserved for round-trip; SnapGene's parser ignores it) |
 | `tree_node` | `SgffHistoryTreeNode \| None` | `None` | Linked tree node |
 
 ### Model Accessors

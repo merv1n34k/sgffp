@@ -164,60 +164,132 @@ class TestParseSequence:
         assert result["length"] == 0
 
 
+def _build_compressed_block(
+    *,
+    sequence_length: int,
+    chunk_count: int,
+    lowercase_count: int,
+    first_marker: int,
+    first_count: int,
+    writer_stamp: int = 30,
+    payload: bytes = b"",
+) -> bytes:
+    """Assemble a compressed-DNA block: outer wrapper + descriptor + payload."""
+    header = bytearray(14)
+    header[0] = writer_stamp
+    struct.pack_into(">I", header, 1, chunk_count)
+    struct.pack_into(">I", header, 5, lowercase_count)
+    header[9] = first_marker
+    struct.pack_into(">I", header, 10, first_count)
+    compressed_length = 4 + 14 + len(payload)
+    return (
+        struct.pack(">I", compressed_length)
+        + struct.pack(">I", sequence_length)
+        + bytes(header)
+        + payload
+    )
+
+
 class TestParseCompressedDna:
     def test_parse_compressed_dna(self):
-        """Parse 2-bit compressed DNA"""
-        # Build compressed block:
-        # 4 bytes: compressed_length
-        # 4 bytes: uncompressed_length (base count)
-        # 14 bytes: mystery bytes
-        # N bytes: 2-bit encoded sequence
-
-        base_count = 8  # GATCGATC
-
-        # Encode sequence: GATC = 0b00011011
-        encoded = bytes([0b00011011, 0b00011011])
-
-        compressed_length = (
-            4 + 14 + len(encoded)
-        )  # uncompressed_len + mystery + encoded
-
-        data = (
-            struct.pack(">I", compressed_length)
-            + struct.pack(">I", base_count)
-            + (b"\x00" * 14)  # mystery bytes (14 bytes)
-            + encoded
+        """Single 0x01 section decodes plain 2-bit DNA."""
+        # GATCGATC = 0b00011011, 0b00011011 → 2 bytes encode 8 chars
+        data = _build_compressed_block(
+            sequence_length=8,
+            chunk_count=1,
+            lowercase_count=0,
+            first_marker=0x01,
+            first_count=8,
+            payload=bytes([0b00011011, 0b00011011]),
         )
-
         result = parse_compressed_dna(data)
         assert result["sequence"] == "GATCGATC"
         assert result["length"] == 8
+        assert result["writer_stamp"] == 30
 
-    def test_parse_compressed_dna_header_fields(self):
-        """14-byte metadata header is decoded into named fields"""
-        header = bytearray(14)
-        header[0] = 30  # format_version
-        header[4] = 1  # strandedness_flag
-        struct.pack_into(">H", header, 8, 1)  # property_flags
-        struct.pack_into(">H", header, 12, 4)  # header_seq_length
-
-        base_count = 4
-        encoded = bytes([0b00011011])
-
-        compressed_length = 4 + 14 + len(encoded)
-
-        data = (
-            struct.pack(">I", compressed_length)
-            + struct.pack(">I", base_count)
-            + bytes(header)
-            + encoded
+    def test_parse_compressed_dna_writer_stamp_preserved(self):
+        """writer_stamp is read back verbatim from byte 0."""
+        data = _build_compressed_block(
+            sequence_length=4,
+            chunk_count=1,
+            lowercase_count=0,
+            first_marker=0x01,
+            first_count=4,
+            writer_stamp=0x1F,
+            payload=bytes([0b00011011]),
         )
-
         result = parse_compressed_dna(data)
-        assert result["format_version"] == 30
-        assert result["strandedness_flag"] == 1
-        assert result["property_flags"] == 1
-        assert result["header_seq_length"] == 4
+        assert result["sequence"] == "GATC"
+        assert result["writer_stamp"] == 0x1F
+
+    def test_parse_compressed_dna_n_run(self):
+        """0x03 section produces a run of Ns with no data bytes."""
+        # Sequence is 5 Ns: chunk_count=1, first_marker=0x03, first_count=5
+        data = _build_compressed_block(
+            sequence_length=5,
+            chunk_count=1,
+            lowercase_count=0,
+            first_marker=0x03,
+            first_count=5,
+            payload=b"",
+        )
+        result = parse_compressed_dna(data)
+        assert result["sequence"] == "NNNNN"
+        assert result["length"] == 5
+
+    def test_parse_compressed_dna_iupac_run(self):
+        """0x02 section decodes nibble-packed ambiguity codes."""
+        # 4 chars: W W S S → nibbles 0xD, 0xD, 0xB, 0xB → bytes 0xDD 0xBB
+        data = _build_compressed_block(
+            sequence_length=4,
+            chunk_count=1,
+            lowercase_count=0,
+            first_marker=0x02,
+            first_count=4,
+            payload=bytes([0xDD, 0xBB]),
+        )
+        result = parse_compressed_dna(data)
+        assert result["sequence"] == "WWSS"
+
+    def test_parse_compressed_dna_with_lowercase(self):
+        """Lowercase pairs at the tail lowercase the assembled sequence."""
+        # 8 chars of GATC + 1 pair (start=2, end=5) → "GAtcgaTC"
+        payload = (
+            bytes([0b00011011, 0b00011011])
+            + struct.pack(">I", 2) + struct.pack(">I", 5)
+        )
+        data = _build_compressed_block(
+            sequence_length=8,
+            chunk_count=1,
+            lowercase_count=1,
+            first_marker=0x01,
+            first_count=8,
+            payload=payload,
+        )
+        result = parse_compressed_dna(data)
+        assert result["sequence"] == "GAtcgaTC"
+
+    def test_parse_compressed_dna_multi_section(self):
+        """chunk_count > 1: first section in header, rest in payload with own frames."""
+        # 4 ACGT + 3 NNN + 2 SS → 9 chars total, 3 sections
+        # first section (0x01, 4): 1 byte of plain DNA (G A T C → 0b00011011 = 0x1B)
+        # second section: 5-byte frame for 0x03 count=3 (N-run, no data)
+        # third section: 5-byte frame for 0x02 count=2 + 1 byte 0xBB (S S)
+        payload = (
+            bytes([0x1B])
+            + bytes([0x03]) + struct.pack(">I", 3)
+            + bytes([0x02]) + struct.pack(">I", 2) + bytes([0xBB])
+        )
+        data = _build_compressed_block(
+            sequence_length=9,
+            chunk_count=3,
+            lowercase_count=0,
+            first_marker=0x01,
+            first_count=4,
+            payload=payload,
+        )
+        result = parse_compressed_dna(data)
+        assert result["sequence"] == "GATCNNNSS"
 
 
 # =============================================================================

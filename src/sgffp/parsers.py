@@ -88,35 +88,98 @@ def parse_sequence(data: bytes) -> Dict[str, Any]:
     }
 
 
+# Compressed-DNA section markers.
+#   0x01 = plain DNA (2-bit GATC packed)
+#   0x02 = IUPAC ambiguity (4-bit nibble packed)
+#   0x03 = all-N run (no data bytes)
+_SECTION_DNA = 0x01
+_SECTION_IUPAC = 0x02
+_SECTION_NRUN = 0x03
+
+_IUPAC_TO_NIBBLE = {
+    "N": 0x04, "B": 0x05, "D": 0x06, "H": 0x07, "K": 0x08,
+    "M": 0x09, "R": 0x0A, "S": 0x0B, "V": 0x0C, "W": 0x0D, "Y": 0x0E,
+}
+_NIBBLE_TO_IUPAC = {v: k for k, v in _IUPAC_TO_NIBBLE.items()}
+
+
+def _decode_iupac_section(data: bytes, n_chars: int) -> str:
+    chars = []
+    full = n_chars // 2
+    for i in range(full):
+        b = data[i]
+        chars.append(_NIBBLE_TO_IUPAC.get((b >> 4) & 0x0F, "N"))
+        chars.append(_NIBBLE_TO_IUPAC.get(b & 0x0F, "N"))
+    if n_chars % 2:
+        chars.append(_NIBBLE_TO_IUPAC.get(data[full] & 0x0F, "N"))
+    return "".join(chars)
+
+
+def _read_compressed_section(payload: bytes, offset: int, marker: int, count: int):
+    if marker == _SECTION_DNA:
+        nb = (count * 2 + 7) // 8
+        return octet_to_dna(payload[offset:offset + nb], count).decode("ascii"), offset + nb
+    if marker == _SECTION_IUPAC:
+        nb = (count + 1) // 2
+        return _decode_iupac_section(payload[offset:offset + nb], count), offset + nb
+    if marker == _SECTION_NRUN:
+        return "N" * count, offset
+    raise ValueError(f"unknown compressed-DNA section marker 0x{marker:02x}")
+
+
 def parse_compressed_dna(data: bytes) -> Dict[str, Any]:
-    """Parse compressed DNA block with 2-bit GATC encoding and metadata header."""
+    """Decode a compressed-DNA block (top-level type 1, or embedded in block 11).
+
+        [cl][ul][stamp][chunks][lowercases][marker][count][section data...][lowercase pairs...]
+         4   4    1       4         4         1      4
+    """
     offset = 0
-
-    _compressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
+    _cl = struct.unpack(">I", data[offset:offset + 4])[0]
+    offset += 4
+    uncompressed_length = struct.unpack(">I", data[offset:offset + 4])[0]
     offset += 4
 
-    uncompressed_length = struct.unpack(">I", data[offset : offset + 4])[0]
-    offset += 4
-
-    # Decode the 14-byte metadata header
-    header = data[offset : offset + 14]
+    writer_stamp = data[offset]
+    chunk_count = struct.unpack(">I", data[offset + 1:offset + 5])[0]
+    lowercase_count = struct.unpack(">I", data[offset + 5:offset + 9])[0]
+    first_marker = data[offset + 9]
+    first_count = struct.unpack(">I", data[offset + 10:offset + 14])[0]
     offset += 14
 
-    format_version = header[0]
-    strandedness_flag = header[4]
-    property_flags = struct.unpack(">H", header[8:10])[0]
-    header_seq_length = struct.unpack(">H", header[12:14])[0]
+    payload = data[offset:]
+    pay_off = 0
+    parts: List[str] = []
 
-    total_bytes = (uncompressed_length * 2 + 7) // 8
-    seq_data = data[offset : offset + total_bytes]
+    if chunk_count >= 1:
+        chunk_str, pay_off = _read_compressed_section(payload, pay_off, first_marker, first_count)
+        parts.append(chunk_str)
+        for _ in range(chunk_count - 1):
+            if pay_off + 5 > len(payload):
+                break
+            marker = payload[pay_off]
+            count = struct.unpack(">I", payload[pay_off + 1:pay_off + 5])[0]
+            pay_off += 5
+            chunk_str, pay_off = _read_compressed_section(payload, pay_off, marker, count)
+            parts.append(chunk_str)
+
+    sequence = "".join(parts)
+
+    if lowercase_count > 0:
+        chars = list(sequence)
+        for _ in range(lowercase_count):
+            if pay_off + 8 > len(payload):
+                break
+            start = struct.unpack(">I", payload[pay_off:pay_off + 4])[0]
+            end = struct.unpack(">I", payload[pay_off + 4:pay_off + 8])[0]
+            pay_off += 8
+            for i in range(start, min(end + 1, len(chars))):
+                chars[i] = chars[i].lower()
+        sequence = "".join(chars)
 
     return {
-        "sequence": octet_to_dna(seq_data, uncompressed_length).decode("ascii"),
+        "sequence": sequence,
         "length": uncompressed_length,
-        "format_version": format_version,
-        "strandedness_flag": strandedness_flag,
-        "property_flags": property_flags,
-        "header_seq_length": header_seq_length,
+        "writer_stamp": writer_stamp,
     }
 
 
