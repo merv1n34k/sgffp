@@ -1,9 +1,9 @@
 # SnapGene File Format Parser
 
-A reverse-engineered parser and writer for SnapGene `.dna` files (DNA, RNA, protein). Supports all 17 known block types with typed Python models, a chainable builder pattern, and a history operations API.
+A reverse-engineered parser and writer for SnapGene `.dna` / `.rna` / `.prot` files. Supports all 17 known block types with typed Python models, a chainable builder pattern, and a history operations API.
 
 > [!Important]
-> Found an unknown block type? Run `sff check your_file.dna -l` — blocks marked `[NEW]` are genuinely unknown, `[*]` are known but undecoded. Please report `[NEW]` blocks in [#1](https://github.com/merv1n34k/sgffp/issues/1) with a dump (`sff check your_file.dna -d`).
+> Effectively full compatibility with SnapGene 8.2.2 — every observed block type parses, sequence decode matches SnapGene's FASTA export, and SnapGene normalizes sgffp-written files without rewriting bytes. Found an unknown block? Run `sff check your_file.dna -l`: `[NEW]` flags genuinely unknown blocks, `[*]` marks known caches. Report `[NEW]` blocks in [#1](https://github.com/merv1n34k/sgffp/issues/1) with `sff check your_file.dna -d`.
 
 ## Installation
 
