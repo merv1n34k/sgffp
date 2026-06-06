@@ -65,6 +65,28 @@ class TestSgffSequence:
         seq.topology = "circular"
         assert blocks[0][0]["topology"] == "circular"
 
+    def test_rna_returns_u_not_t(self):
+        """Block 32 stores T on disk; value should return U (matches SnapGene's
+        FASTA export). Case is preserved.
+        """
+        blocks = {32: [{"sequence": "AcGtTTNN"}]}
+        seq = SgffSequence(blocks)
+        assert seq.value == "AcGuUUNN"
+        assert "T" not in seq.value and "t" not in seq.value
+
+    def test_rna_write_converts_u_back_to_t(self):
+        """Writing U into an RNA block stores T on disk for SnapGene compatibility."""
+        blocks = {32: [{"sequence": "ACGT"}]}
+        seq = SgffSequence(blocks)
+        seq.value = "ACGu"
+        assert blocks[32][0]["sequence"] == "ACGt"
+
+    def test_dna_keeps_t(self):
+        """Block 0 (DNA) is unaffected by the RNA T↔U translation."""
+        blocks = {0: [{"sequence": "ACGT"}]}
+        seq = SgffSequence(blocks)
+        assert seq.value == "ACGT"
+
 
 class TestSgffFeature:
     def test_from_dict(self):

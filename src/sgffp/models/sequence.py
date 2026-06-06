@@ -50,6 +50,14 @@ class SgffSequenceData:
         return len(self.value)
 
 
+_RNA_BLOCK_ID = 32
+
+# SnapGene stores RNA on disk as DNA bytes (T/t), but the user-facing alphabet
+# is U/u. Translate on the parse/sync boundary so the model is always correct.
+_T_TO_U = str.maketrans("Tt", "Uu")
+_U_TO_T = str.maketrans("Uu", "Tt")
+
+
 class SgffSequence(SgffModel):
     """Sequence wrapper for DNA, RNA, and Protein blocks."""
 
@@ -74,9 +82,13 @@ class SgffSequence(SgffModel):
             return SgffSequenceData()
 
         data = self._get_block(self._block_id)
-        if data:
-            return SgffSequenceData.from_dict(data)
-        return SgffSequenceData()
+        if not data:
+            return SgffSequenceData()
+
+        loaded = SgffSequenceData.from_dict(data)
+        if self._block_id == _RNA_BLOCK_ID:
+            loaded.value = loaded.value.translate(_T_TO_U)
+        return loaded
 
     @property
     def data(self) -> SgffSequenceData:
@@ -149,7 +161,11 @@ class SgffSequence(SgffModel):
             return
 
         bid = self._block_id or 0
-        self._set_block(bid, self._data.to_dict())
+        out = self._data.to_dict()
+        if bid == _RNA_BLOCK_ID:
+            # On-disk RNA storage uses T/t; the model holds U/u.
+            out["sequence"] = out["sequence"].translate(_U_TO_T)
+        self._set_block(bid, out)
 
     def __repr__(self) -> str:
         return f"SgffSequence(length={self.length}, topology={self.topology})"
