@@ -18,7 +18,6 @@ class SgffSequenceData:
     dam_methylated: bool = False
     dcm_methylated: bool = False
     ecoki_methylated: bool = False
-    _mystery: Optional[bytes] = None
 
     @classmethod
     def from_dict(cls, data: Dict) -> "SgffSequenceData":
@@ -29,11 +28,10 @@ class SgffSequenceData:
             dam_methylated=data.get("dam_methylated", False),
             dcm_methylated=data.get("dcm_methylated", False),
             ecoki_methylated=data.get("ecoki_methylated", False),
-            _mystery=data.get("mystery"),
         )
 
     def to_dict(self) -> Dict:
-        result = {
+        return {
             "sequence": self.value,
             "topology": self.topology,
             "strandedness": self.strandedness,
@@ -41,9 +39,6 @@ class SgffSequenceData:
             "dcm_methylated": self.dcm_methylated,
             "ecoki_methylated": self.ecoki_methylated,
         }
-        if self._mystery:
-            result["mystery"] = self._mystery
-        return result
 
     @property
     def length(self) -> int:

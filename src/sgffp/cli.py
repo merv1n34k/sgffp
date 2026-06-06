@@ -33,12 +33,10 @@ def cmd_parse(args):
     # Convert int keys to strings for JSON
     blocks_json = {str(k): v for k, v in sgff.blocks.items()}
 
-    # Handle non-JSON-serializable bytes fields
-    for key, items in blocks_json.items():
+    # Stringify binary fields that aren't JSON-serializable
+    for items in blocks_json.values():
         for item in items:
             if isinstance(item, dict):
-                if "mystery" in item:
-                    item["mystery"] = item["mystery"].hex()
                 if "data" in item and isinstance(item["data"], bytes):
                     item["data"] = f"<binary {len(item['data'])} bytes>"
 

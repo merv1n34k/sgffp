@@ -349,24 +349,40 @@ class TestDnaToOctet:
 
 
 class TestSgffWriterCompressedDna:
-    def test_write_compressed_dna(self, sample_cookie):
-        """2-bit encoding (block 1)"""
+    def test_write_compressed_dna_plain(self, sample_cookie):
+        """Plain ACGT sequence roundtrips through the section-based encoder."""
         obj = SgffObject(cookie=sample_cookie)
-        obj.blocks = {
-            1: [
-                {
-                    "sequence": "GATCGATC",
-                    "length": 8,
-                    "mystery": b"\x00" * 14,  # Mystery bytes should be 14 bytes
-                }
-            ]
-        }
+        obj.blocks = {1: [{"sequence": "GATCGATC"}]}
 
         data = SgffWriter.to_bytes(obj)
         sgff = SgffReader.from_bytes(data)
 
-        assert 1 in sgff.blocks
-        assert sgff.blocks[1][0]["sequence"] == "GATCGATC"
+        restored = sgff.blocks[1][0]
+        assert restored["sequence"] == "GATCGATC"
+        assert restored["length"] == 8
+        assert restored["writer_stamp"] == 30  # default when not specified
+
+    def test_write_compressed_dna_preserves_writer_stamp(self, sample_cookie):
+        """writer_stamp is the only opaque field we round-trip — verify it."""
+        obj = SgffObject(cookie=sample_cookie)
+        obj.blocks = {1: [{"sequence": "AAAA", "writer_stamp": 0x1f}]}
+
+        data = SgffWriter.to_bytes(obj)
+        sgff = SgffReader.from_bytes(data)
+
+        assert sgff.blocks[1][0]["writer_stamp"] == 0x1f
+
+    def test_write_compressed_dna_mixed(self, sample_cookie):
+        """Mixed-case + IUPAC + N-run roundtrips losslessly (writer re-chunks)."""
+        seq = "nnAGGAGTTGTCTTCnnNNAGAAGACaaTACTTNNT"  # 36 chars, the hardest known case
+        obj = SgffObject(cookie=sample_cookie)
+        obj.blocks = {1: [{"sequence": seq}]}
+
+        data = SgffWriter.to_bytes(obj)
+        sgff = SgffReader.from_bytes(data)
+
+        assert sgff.blocks[1][0]["sequence"] == seq
+        assert sgff.blocks[1][0]["length"] == len(seq)
 
 
 # =============================================================================

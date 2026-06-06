@@ -2,7 +2,7 @@
 
 ## SgffHistory
 
-Main history model managing the tree, nodes, and modifiers.
+History model: tree (block 7), snapshots (block 11), and content blobs (block 30). Block 29 modifiers are accessed via `sgff.blocks[29]`.
 
 ```python
 from sgffp import SgffHistory
@@ -28,12 +28,6 @@ from sgffp import SgffHistory
 | `add_node(node) → int` | Add snapshot and sync |
 | `remove_node(index) → bool` | Remove snapshot and sync |
 | `update_node(index, **kwargs) → bool` | Update snapshot attributes |
-
-### Modifiers (Block 29)
-
-| Member | Description |
-|--------|-------------|
-| `modifiers → List[Dict]` | Modifier metadata |
 
 ### Tree Modification
 

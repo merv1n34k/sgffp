@@ -648,7 +648,12 @@ class SgffHistoryNode:
 
 
 class SgffHistory(SgffModel):
-    """SnapGene edit history with tree, nodes, and modifiers."""
+    """SnapGene edit history — tree (block 7), snapshots (block 11), and
+    nested-content snapshots (block 30). Top-level modifier blocks (block 29)
+    do round-trip via the raw blocks dict but have no typed model accessor:
+    SnapGene only emits modifier blobs embedded inside block-11 history nodes
+    (handled by the block-11 parser/writer), not as standalone blocks.
+    """
 
     BLOCK_IDS = (7, 11, 29, 30)
 
@@ -656,7 +661,6 @@ class SgffHistory(SgffModel):
         super().__init__(blocks)
         self._tree: Optional[SgffHistoryTree] = None
         self._nodes: Optional[Dict[int, SgffHistoryNode]] = None
-        self._modifiers: Optional[List[Dict]] = None
         self._linked: bool = False
 
     # -------------------------------------------------------------------------
@@ -756,17 +760,6 @@ class SgffHistory(SgffModel):
         return True
 
     # -------------------------------------------------------------------------
-    # Modifiers (Block 29)
-    # -------------------------------------------------------------------------
-
-    @property
-    def modifiers(self) -> List[Dict]:
-        """Modifier metadata."""
-        if self._modifiers is None:
-            self._modifiers = self._get_blocks(29)
-        return self._modifiers
-
-    # -------------------------------------------------------------------------
     # Linking
     # -------------------------------------------------------------------------
 
@@ -820,13 +813,6 @@ class SgffHistory(SgffModel):
             ordered = list(self._nodes.values())
 
         self._set_blocks(11, [node.to_dict() for node in ordered])
-
-    def _sync_modifiers(self) -> None:
-        """Write modifiers to block storage."""
-        if self._modifiers:
-            self._set_blocks(29, self._modifiers)
-        else:
-            self._remove_block(29)
 
     # -------------------------------------------------------------------------
     # Snapshot & ID helpers
@@ -988,7 +974,6 @@ class SgffHistory(SgffModel):
         """Remove all history."""
         self._tree = None
         self._nodes = {}
-        self._modifiers = []
         self._linked = False
         for bid in self.BLOCK_IDS:
             self._remove_block(bid)

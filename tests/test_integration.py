@@ -120,7 +120,6 @@ class TestHistoryRoundtrip:
                     "node_index": 5,
                     "sequence": "GATCGATCGATCGATC",
                     "sequence_type": 1,
-                    "mystery": b"\x00" * 14,
                 }
             ]
         }
