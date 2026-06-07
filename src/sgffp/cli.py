@@ -97,9 +97,11 @@ def cmd_info(args):
     if sgff.has_attachments:
         print(f"Attachments: {len(sgff.attachments)}")
 
-    # History
+    # History — show the tree-node count (matches SnapGene's UI; the snapshot
+    # count is one less because the root tree node IS the live sequence).
     if sgff.has_history:
-        print(f"History: {len(sgff.history)} nodes")
+        n_tree = len(sgff.history.tree) if sgff.history.tree else 0
+        print(f"History: {n_tree} nodes")
 
     # Blocks summary
     print(f"Blocks: {', '.join(str(t) for t in sorted(sgff.types))}")
