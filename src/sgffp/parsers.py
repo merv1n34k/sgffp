@@ -217,10 +217,44 @@ def parse_xml(data: bytes) -> Optional[Dict]:
         return None
 
 
+def _decompress_lzma(data: bytes) -> bytes:
+    """Decompress LZMA/XZ/raw data using common container formats."""
+    
+    # Try default LZMA decompression (auto-detect format)
+    try:
+        return lzma.decompress(data)
+    except lzma.LZMAError:
+        pass
+
+    # Try LZMA with explicit format (XZ or ALONE)
+    for fmt in (lzma.FORMAT_XZ, lzma.FORMAT_ALONE):
+        try:
+            return lzma.decompress(data, format=fmt)
+        except lzma.LZMAError:
+            pass
+
+    # Try raw LZMA with common dictionary sizes (8MB, 16MB, 32MB)
+    for dict_size in (1 << 23, 1 << 24, 1 << 25):
+        try:
+            return lzma.decompress(
+                data,
+                format=lzma.FORMAT_RAW,
+                filters=[{"id": lzma.FILTER_LZMA1, "dict_size": dict_size}],
+            )
+        except lzma.LZMAError:
+            pass
+
+    raise lzma.LZMAError("Unsupported LZMA/XZ format or invalid compressed data")
+
+
 def parse_lzma_xml(data: bytes) -> Optional[Dict]:
     """Parse LZMA-compressed XML block into dict with clean JSON keys."""
     try:
-        decompressed = lzma.decompress(data)
+        decompressed = _decompress_lzma(data)
+    except lzma.LZMAError:
+        return parse_xml(data)
+
+    try:
         parsed = xmltodict.parse(decompressed.decode("utf-8", errors="ignore"))
         return _clean_xml_dict(parsed)
     except Exception as e:
@@ -231,7 +265,15 @@ def parse_lzma_xml(data: bytes) -> Optional[Dict]:
 def parse_lzma_json(data: bytes) -> Optional[Any]:
     """Parse LZMA-compressed JSON block."""
     try:
-        decompressed = lzma.decompress(data)
+        decompressed = _decompress_lzma(data)
+    except lzma.LZMAError:
+        try:
+            return json.loads(data.decode("utf-8", errors="ignore"))
+        except Exception as e:
+            logger.debug("Failed to parse LZMA JSON: %s", e)
+            return None
+
+    try:
         return json.loads(decompressed)
     except Exception as e:
         logger.debug("Failed to parse LZMA JSON: %s", e)
@@ -241,7 +283,11 @@ def parse_lzma_json(data: bytes) -> Optional[Any]:
 def parse_lzma_nested(data: bytes) -> Optional[Dict[int, List[Any]]]:
     """Parse LZMA-compressed block containing nested TLV blocks."""
     try:
-        decompressed = lzma.decompress(data)
+        decompressed = _decompress_lzma(data)
+    except lzma.LZMAError:
+        return parse_blocks(BytesIO(data))
+
+    try:
         return parse_blocks(BytesIO(decompressed))
     except Exception as e:
         logger.debug("Failed to parse LZMA nested blocks: %s", e)
