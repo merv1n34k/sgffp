@@ -16,8 +16,16 @@ import xmltodict
 logger = logging.getLogger(__name__)
 
 
-def parse_blocks(stream) -> Dict[int, List[Any]]:
-    """Parse TLV blocks from stream."""
+def parse_blocks(stream, scheme=None) -> Dict[int, List[Any]]:
+    """Parse TLV blocks from stream using the given block-type scheme.
+
+    ``scheme`` maps block type -> parser. It defaults to the modern ``SCHEME``;
+    the reader supplies a version-specific scheme via ``scheme_for()`` so that
+    the parsers themselves stay single-purpose and version-agnostic.
+    """
+    if scheme is None:
+        scheme = SCHEME
+
     result: Dict[int, List[Any]] = {}
 
     while True:
@@ -28,7 +36,7 @@ def parse_blocks(stream) -> Dict[int, List[Any]]:
         data = stream.read(block_length)
 
         # Skip unknown blocks
-        parser = SCHEME.get(block_type)
+        parser = scheme.get(block_type)
         if parser is None:
             logger.debug(
                 "Skipping unknown block type %d (%d bytes)", block_type, block_length
@@ -854,3 +862,38 @@ SCHEME: Dict[int, Callable] = {
     32: parse_sequence,  # RNA
     34: parse_lzma_json,  # RNA structure predictions (LZMA JSON)
 }
+
+
+# =============================================================================
+# VERSION-BASED DISPATCH
+# =============================================================================
+
+# SnapGene bumped the export version to 15 when it started LZMA-compressing
+# XML blocks that older versions stored as plain XML. Files below this cutoff
+# use the legacy scheme.
+MODERN_EXPORT_VERSION = 15
+
+# Enzyme cache/preference blocks (cut index, recognition map, display prefs).
+# Modern SnapGene regenerates these on load, so the modern scheme skips them.
+# Old SnapGene (< v15) does NOT regenerate them — it needs them present to show
+# enzymes — so the legacy scheme retains them verbatim for lossless round-trip.
+LEGACY_CACHE_BLOCKS = (2, 3, 13)
+
+
+def parse_raw(data: bytes) -> bytes:
+    """Retain a block's bytes unchanged (round-trips via SgffWriter verbatim)."""
+    return data
+
+
+# Per-block parser overrides for legacy (export_version < 15) files.
+_LEGACY_OVERRIDES: Dict[int, Callable] = {
+    7: parse_xml,  # History tree was plain XML before v15 (LZMA-XZ after)
+    **{b: parse_raw for b in LEGACY_CACHE_BLOCKS},  # keep enzyme caches
+}
+
+
+def scheme_for(export_version: int) -> Dict[int, Callable]:
+    """Return the block-type parser scheme for a file's export version."""
+    if export_version < MODERN_EXPORT_VERSION:
+        return {**SCHEME, **_LEGACY_OVERRIDES}
+    return SCHEME

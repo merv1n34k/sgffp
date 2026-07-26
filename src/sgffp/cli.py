@@ -183,6 +183,18 @@ def cmd_filter(args):
     print(f"Filtered file written to {args.output}")
 
 
+def cmd_convert(args):
+    """Re-save a file, normalizing to the modern format (or preserving version)."""
+    sgff = _open_input(args.input)
+    SgffWriter.to_file(sgff, args.output, preserve=args.preserve)
+    target = (
+        f"preserved v{sgff.cookie.export_version}"
+        if args.preserve
+        else "normalized to v15"
+    )
+    print(f"Wrote {args.output} ({target})")
+
+
 def _format_node(node):
     """Format a node's basic info"""
     topo = "circular" if node.circular else "linear"
@@ -355,6 +367,17 @@ def main():
     )
     p.add_argument("-o", "--output", required=True, help="Output SGFF file")
 
+    # Convert
+    p = subparsers.add_parser(
+        "convert", help="Re-save a file, normalizing to the modern format (v15)"
+    )
+    p.add_argument("input", help="Input SGFF file")
+    p.add_argument("-o", "--output", required=True, help="Output SGFF file")
+    p.add_argument(
+        "-p", "--preserve", action="store_true",
+        help="Keep the source file's version and format instead of normalizing to v15",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -367,6 +390,7 @@ def main():
         "tree": cmd_tree,
         "check": cmd_check,
         "filter": cmd_filter,
+        "convert": cmd_convert,
     }
     commands[args.command](args)
 
