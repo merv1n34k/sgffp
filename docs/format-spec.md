@@ -160,7 +160,9 @@ XML block parsed by `xmltodict`. Top-level element: `<Primers>`.
 </Primers>
 ```
 
-Each `<Primer>` can contain multiple `<BindingSite>` child elements. SnapGene generates both detailed and simplified (attribute `simplified="1"`) versions. The `boundStrand` attribute is `"0"` for forward/top and `"1"` for reverse/bottom. The `location` uses 1-based coordinates.
+Each `<Primer>` can contain multiple `<BindingSite>` child elements. SnapGene generates both detailed and simplified (attribute `simplified="1"`) versions. The `boundStrand` attribute is `"0"` for forward/top and `"1"` for reverse/bottom.
+
+The `location="A-B"` attribute is **0-based inclusive** — a binding site covering 0-based positions `A` through `B` inclusive, i.e. the half-open range `[A, B+1)`. This differs from feature segment `range` values, which are **1-based inclusive**. sgffp exposes both as 0-based half-open `[start, end)`, so a primer stored as `location="100-119"` parses to `start=100, end=120`.
 
 ### Block 6 — Notes (XML)
 

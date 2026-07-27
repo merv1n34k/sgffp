@@ -1017,8 +1017,9 @@ class TestSgffBindingSite:
             "Component": {"hybridizedRange": "2252-2290", "bases": "GTTGGG"},
         }
         bs = SgffBindingSite.from_dict(data)
-        assert bs.start == 2251  # 0-based
-        assert bs.end == 2290
+        # Primer location is 0-based inclusive "A-B" -> half-open [A, B+1)
+        assert bs.start == 2252
+        assert bs.end == 2291
         assert bs.bound_strand == "-"
         assert bs.annealed_bases == "GTTGGGGTCTTTGCTCAG"
         assert bs.melting_temperature == 71.0
@@ -1066,14 +1067,30 @@ class TestSgffBindingSite:
         assert bs.bound_strand == "+"
         assert bs.to_dict()["boundStrand"] == "0"
 
+    def test_coordinate_convention_matches_annealing(self):
+        """Primer location "A-B" is 0-based inclusive: half-open [A, B+1).
+
+        A 20 bp primer annealing at 0-based positions 100..119 is stored as
+        location "100-119"; parsed start/end must be the true half-open range
+        [100, 120) so downstream consumers (and BioPython) agree.
+        """
+        bs = SgffBindingSite.from_dict(
+            {"location": "100-119", "boundStrand": "0", "annealedBases": "A" * 20}
+        )
+        assert bs.start == 100
+        assert bs.end == 120
+        assert bs.end - bs.start == len(bs.annealed_bases)
+        # inverse serialization restores the original location
+        assert bs.to_dict()["location"] == "100-119"
+
     def test_length_normal(self):
         bs = SgffBindingSite.from_dict({"location": "207-225", "boundStrand": "0"})
         assert bs.length() == 19
 
     def test_length_origin_spanning(self):
         bs = SgffBindingSite.from_dict({"location": "4398-3", "boundStrand": "0"})
-        assert bs.start == 4397
-        assert bs.end == 3
+        assert bs.start == 4398
+        assert bs.end == 4
         assert bs.length(seq_len=4407) == 13
 
     def test_origin_spanning_roundtrip(self):
@@ -1102,8 +1119,9 @@ class TestSgffPrimerExtras:
         # BindingSite is now parsed into binding_sites, NOT in extras
         assert "BindingSite" not in primer.extras
         assert len(primer.binding_sites) == 1
-        assert primer.binding_sites[0].start == 0
-        assert primer.binding_sites[0].end == 20
+        # location "1-20" is 0-based inclusive -> half-open [1, 21)
+        assert primer.binding_sites[0].start == 1
+        assert primer.binding_sites[0].end == 21
 
         result = primer.to_dict()
         assert result["name"] == "FWD"
@@ -1145,7 +1163,7 @@ class TestSgffPrimerExtras:
             ],
         }
         primer = SgffPrimer.from_dict(data)
-        assert primer.bind_position == 99  # 0-based
+        assert primer.bind_position == 100  # 0-based start of location "100-120"
         assert primer.bind_strand == "-"
         assert primer.melting_temperature == 65.0
 

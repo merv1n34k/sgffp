@@ -38,8 +38,12 @@ class SgffBindingSite:
         location = data.get("location", "")
         if location and "-" in location:
             parts = location.split("-", 1)
-            start = int(parts[0]) - 1  # convert to 0-based
-            end = int(parts[1])
+            # Primer binding sites use a different coordinate convention from
+            # feature segments: SnapGene stores the location as 0-based inclusive
+            # (A-B spans 0-based positions A..B), so the half-open [start, end)
+            # is [A, B + 1). Features, by contrast, are 1-based inclusive.
+            start = int(parts[0])
+            end = int(parts[1]) + 1
 
         raw_strand = data.get("boundStrand", "0")
         bound_strand = "-" if raw_strand == "1" else "+"
@@ -67,7 +71,9 @@ class SgffBindingSite:
         result = dict(self.extras)
         if self.simplified:
             result["simplified"] = "1"
-        result["location"] = f"{self.start + 1}-{self.end}"  # back to 1-based
+        # Inverse of from_dict: 0-based half-open [start, end) back to SnapGene's
+        # 0-based inclusive "A-B" primer location.
+        result["location"] = f"{self.start}-{self.end - 1}"
         result["boundStrand"] = "1" if self.bound_strand == "-" else "0"
         if self.annealed_bases:
             result["annealedBases"] = self.annealed_bases

@@ -87,9 +87,9 @@ All return `self` for chaining.
 
 Add an annotation feature.
 
-#### `add_primer(name, sequence, bind_position=None, bind_strand="+") → SgffObject`
+#### `add_primer(name, sequence, bind_position=None, bind_end=None, bind_strand="+") → SgffObject`
 
-Add a primer.
+Add a primer. `bind_position` is the 0-based binding start; `bind_end` is the 0-based half-open end and defaults to `bind_position + len(sequence)`.
 
 #### `add_attachment(name, data, *, mtime="", compressible="0") → SgffObject`
 
