@@ -157,3 +157,29 @@ sff filter plasmid.dna -k 0,10 -o minimal.dna
 # Keep sequence, features, and notes
 sff filter plasmid.dna -k 0,6,10 -o stripped.dna
 ```
+
+---
+
+## `sff convert`
+
+Re-save a file, normalizing it to the modern format (`export_version` 15) by default.
+
+```bash
+sff convert <input> -o OUTPUT [-p]
+```
+
+| Argument | Description |
+|----------|-------------|
+| `input` | Input `.dna` file (required) |
+| `-o`, `--output` | Output `.dna` file (required) |
+| `-p`, `--preserve` | Keep the source file's version and block encodings instead of normalizing |
+
+### Examples
+
+```bash
+# Upgrade an old SnapGene file to the modern format
+sff convert old_plasmid.dna -o modern.dna
+
+# Re-save while keeping the original version (re-opens in the old SnapGene)
+sff convert old_plasmid.dna -o resaved.dna -p
+```

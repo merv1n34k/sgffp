@@ -607,3 +607,73 @@ class TestHistoryModifierRoundtrip:
         assert len(orig_nodes) == len(rest_nodes)
         for orig, rest in zip(orig_nodes, rest_nodes):
             assert orig["modifier"] == rest["modifier"]
+
+
+# =============================================================================
+# Legacy (pre-v15) Version Handling
+# =============================================================================
+
+
+def _block7_format(data: bytes) -> str:
+    """Classify block 7's on-disk encoding in a written file."""
+    from io import BytesIO
+    import struct
+
+    f = BytesIO(data)
+    f.read(1 + 4 + 14)  # header + cookie
+    while True:
+        tb = f.read(1)
+        if not tb:
+            return "absent"
+        bt = tb[0]
+        blen = struct.unpack(">I", f.read(4))[0]
+        body = f.read(blen)
+        if bt == 7:
+            if body[:5] == b"<?xml":
+                return "plain-xml"
+            if body[:2] == b"\xfd7":
+                return "lzma-xz"
+            return "other"
+
+
+class TestLegacyVersionRoundtrip:
+    def test_legacy_history_tree_is_parsed(self, legacy_v13_dna):
+        """Plain-XML history tree (export_version 13) parses via the legacy scheme."""
+        sgff = SgffReader.from_file(legacy_v13_dna)
+        assert sgff.cookie.export_version == 13
+        assert 7 in sgff.blocks
+        assert sgff.history.tree is not None
+        assert sgff.history.tree.root is not None
+
+    def test_legacy_enzyme_caches_retained_on_read(self, legacy_v13_dna):
+        """Legacy read retains enzyme cache blocks 2, 3, 13 as raw bytes."""
+        sgff = SgffReader.from_file(legacy_v13_dna)
+        for bt in (2, 3, 13):
+            assert bt in sgff.blocks, f"block {bt} dropped on legacy read"
+            assert isinstance(sgff.blocks[bt][0], bytes)
+
+    def test_default_write_normalizes_to_modern(self, legacy_v13_dna):
+        """Default write upgrades a legacy file: v15, LZMA block 7, caches dropped."""
+        original = SgffReader.from_file(legacy_v13_dna)
+        written = SgffWriter.to_bytes(original)
+
+        assert _block7_format(written) == "lzma-xz"
+        restored = SgffReader.from_bytes(written)
+        assert restored.cookie.export_version == 15
+        assert len(restored.history.tree) == len(original.history.tree)
+        # Enzyme caches are dropped — modern SnapGene regenerates them.
+        assert not any(bt in restored.blocks for bt in (2, 3, 13))
+
+    def test_preserve_write_keeps_legacy_format(self, legacy_v13_dna):
+        """preserve=True keeps v13, plain-XML block 7, and the enzyme caches."""
+        original = SgffReader.from_file(legacy_v13_dna)
+        written = SgffWriter.to_bytes(original, preserve=True)
+
+        assert _block7_format(written) == "plain-xml"
+        restored = SgffReader.from_bytes(written)
+        assert restored.cookie.export_version == 13
+        assert len(restored.history.tree) == len(original.history.tree)
+        assert restored.history.tree.root.name == original.history.tree.root.name
+        # Enzyme caches survive verbatim so old SnapGene still shows enzymes.
+        for bt in (2, 3, 13):
+            assert restored.blocks[bt] == original.blocks[bt]

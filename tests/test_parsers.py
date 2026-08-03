@@ -21,6 +21,8 @@ from sgffp.parsers import (
     parse_ztr,
     parse_history_node,
     parse_trace_alignment,
+    scheme_for,
+    MODERN_EXPORT_VERSION,
     SCHEME,
     ZTR_MAGIC,
 )
@@ -564,6 +566,26 @@ class TestScheme:
         assert 2 not in SCHEME
         assert 3 not in SCHEME
         assert 13 not in SCHEME
+
+
+class TestSchemeForVersion:
+    def test_modern_uses_lzma_history_tree(self):
+        """export_version >= 15 keeps the LZMA history-tree parser."""
+        scheme = scheme_for(MODERN_EXPORT_VERSION)
+        assert scheme[7] == parse_lzma_xml
+        assert scheme is SCHEME  # no copy needed for modern
+
+    def test_legacy_uses_plain_xml_history_tree(self):
+        """export_version < 15 overrides block 7 to plain XML."""
+        scheme = scheme_for(13)
+        assert scheme[7] == parse_xml
+        # everything else falls through to the modern scheme
+        assert scheme[0] == parse_sequence
+        assert scheme[10] == parse_features
+
+    def test_boundary_at_15(self):
+        assert scheme_for(14)[7] == parse_xml
+        assert scheme_for(15)[7] == parse_lzma_xml
 
 
 # =============================================================================

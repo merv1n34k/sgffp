@@ -100,18 +100,27 @@ class TestSgffWriterHeader:
 
 
 class TestSgffWriterCookie:
-    def test_write_cookie(self, sample_sgff):
-        """Cookie serialized correctly"""
-        data = SgffWriter.to_bytes(sample_sgff)
+    def _cookie(self, data):
+        cookie_start = 13  # after magic + length + title
+        return struct.unpack(">HHH", data[cookie_start : cookie_start + 6])
 
-        # Cookie starts at byte 13 (after magic + length + title)
-        cookie_start = 13
-        type_of_seq = struct.unpack(">H", data[cookie_start : cookie_start + 2])[0]
-        export_ver = struct.unpack(">H", data[cookie_start + 2 : cookie_start + 4])[0]
-        import_ver = struct.unpack(">H", data[cookie_start + 4 : cookie_start + 6])[0]
-
+    def test_write_cookie_normalizes_export_version(self, sample_sgff):
+        """Default write normalizes export_version to the modern value (15)."""
+        # fixture cookie is export_version=16, import_version=8
+        type_of_seq, export_ver, import_ver = self._cookie(
+            SgffWriter.to_bytes(sample_sgff)
+        )
         assert type_of_seq == 1
-        assert export_ver == 16
+        assert export_ver == 15  # normalized
+        assert import_ver == 8  # import_version left untouched
+
+    def test_write_cookie_preserve(self, sample_sgff):
+        """preserve=True keeps the source export_version verbatim."""
+        type_of_seq, export_ver, import_ver = self._cookie(
+            SgffWriter.to_bytes(sample_sgff, preserve=True)
+        )
+        assert type_of_seq == 1
+        assert export_ver == 16  # preserved
         assert import_ver == 8
 
 

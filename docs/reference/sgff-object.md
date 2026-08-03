@@ -161,8 +161,10 @@ from sgffp import SgffWriter
 | Method | Description |
 |--------|-------------|
 | `SgffWriter(target)` | Create writer to path, `Path`, or `BinaryIO` |
-| `writer.write(sgff)` | Write `SgffObject` to target |
-| `SgffWriter.to_file(sgff, path)` | Write to file path |
-| `SgffWriter.to_bytes(sgff) → bytes` | Write to bytes |
+| `writer.write(sgff, preserve=False)` | Write `SgffObject` to target |
+| `SgffWriter.to_file(sgff, path, preserve=False)` | Write to file path |
+| `SgffWriter.to_bytes(sgff, preserve=False) → bytes` | Write to bytes |
 
 Blocks are written in sorted order by type ID.
+
+By default the file is normalized to the modern format (`export_version` 15, modern block encodings). Pass `preserve=True` to keep the source file's export version and its version-specific block encodings, so the result re-opens in the SnapGene version that produced it.

@@ -27,6 +27,12 @@ Every `.dna` file starts with a fixed 19-byte header:
 | 2 | Protein |
 | 7 | RNA |
 
+## Versioning
+
+`export_version` identifies the SnapGene format revision that wrote the file, and some blocks change encoding across revisions. The known cutoff is **`export_version` 15**: at and above it (SnapGene ~8.x) the history tree (block 7) is LZMA-compressed; below it (older SnapGene) block 7 is plain XML.
+
+sgffp resolves the correct parser per block from the cookie's `export_version` — the parsers themselves stay single-purpose. On write, the file is normalized to `export_version` 15 by default (modern encodings); a preserve option keeps the original version and its block encodings so the file re-opens in the SnapGene release that produced it.
+
 ## TLV Block Format
 
 After the header, the file contains a sequence of TLV (Type-Length-Value) blocks:
@@ -180,9 +186,11 @@ File-level metadata. Top-level element: `<Notes>`.
 </Notes>
 ```
 
-### Block 7 — History Tree (LZMA-compressed XML)
+### Block 7 — History Tree (XML)
 
-The entire block is LZMA-compressed. After decompression, it contains XML with a recursive `<Node>` tree describing the cloning operation history. Root node represents the current file state; children are previous states (tree grows backward in time).
+Contains XML with a recursive `<Node>` tree describing the cloning operation history. Root node represents the current file state; children are previous states (tree grows backward in time).
+
+The on-disk encoding is **version-dependent**: files with `export_version >= 15` (SnapGene ~8.x) LZMA-compress the block; older files (`export_version < 15`) store it as plain XML. sgffp selects the right parser from the cookie's export version (see [Versioning](#versioning)).
 
 ```xml
 <HistoryTree>
@@ -527,9 +535,16 @@ LZMA-compressed JSON with RNA secondary structure prediction data.
 ### Blocks Not Parsed
 
 Blocks 2, 3, 13, and 35 are SnapGene enzyme-related caches/preferences.
-sgffp skips them on read and does not emit them on write — SnapGene rebuilds
-them on demand when the user opens its enzyme panel. Stripping them is not
-data loss; it is equivalent to clearing a cache.
+For modern files (`export_version >= 15`) sgffp skips them on read and does not
+emit them on write — modern SnapGene rebuilds them on demand, so stripping them
+is equivalent to clearing a cache.
+
+**Legacy exception:** older SnapGene (`export_version < 15`) does *not*
+regenerate these caches, so a stripped file shows no enzymes when re-opened
+there. For legacy files sgffp therefore retains blocks 2, 3, 13 as raw bytes.
+A `preserve` write keeps them (the file re-opens with enzymes in old SnapGene);
+a default normalize-to-v15 write drops them (modern SnapGene regenerates). See
+[Versioning](#versioning).
 
 **Block 2** — rare optional metadata. Layout: 1-byte marker `0x01` followed
 by a packed array of big-endian uint32 values. Content appears to be a

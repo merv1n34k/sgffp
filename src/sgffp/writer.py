@@ -13,6 +13,7 @@ from io import BytesIO
 import xmltodict
 
 from .internal import SgffObject
+from .parsers import MODERN_EXPORT_VERSION, LEGACY_CACHE_BLOCKS
 
 # Uppercase keys that are XML attributes, not child elements
 _UPPERCASE_ATTRS = {"ID"}
@@ -62,17 +63,31 @@ class SgffWriter:
         else:
             self.stream = target
             self.should_close = False
+        # Export version the current write is targeting; drives version-specific
+        # block encoding (e.g. plain vs LZMA history tree). Set per write().
+        self._target_version = MODERN_EXPORT_VERSION
 
-    def write(self, sgff: SgffObject) -> None:
-        """Write SgffObject to file"""
+    def write(self, sgff: SgffObject, preserve: bool = False) -> None:
+        """Write SgffObject to file.
+
+        By default the file is normalized to the modern format (export_version
+        15); pass ``preserve=True`` to keep the source file's export version and
+        its version-specific block encodings, so the result re-opens in the
+        SnapGene version that produced it.
+        """
         try:
-            self._write_file(sgff)
+            self._write_file(sgff, preserve)
         finally:
             if self.should_close:
                 self.stream.close()
 
-    def _write_file(self, sgff: SgffObject) -> None:
+    def _write_file(self, sgff: SgffObject, preserve: bool = False) -> None:
         """Internal writing logic"""
+        export_version = (
+            sgff.cookie.export_version if preserve else MODERN_EXPORT_VERSION
+        )
+        self._target_version = export_version
+
         # Header
         self.stream.write(b"\t")
         self.stream.write(struct.pack(">I", 14))
@@ -80,11 +95,15 @@ class SgffWriter:
 
         # Cookie
         self.stream.write(struct.pack(">H", sgff.cookie.type_of_sequence))
-        self.stream.write(struct.pack(">H", sgff.cookie.export_version))
+        self.stream.write(struct.pack(">H", export_version))
         self.stream.write(struct.pack(">H", sgff.cookie.import_version))
 
         # Blocks sorted by type
         for block_type in sorted(sgff.blocks.keys()):
+            # Legacy enzyme caches are kept only when preserving the original
+            # version; normalizing to modern drops them (SnapGene regenerates).
+            if not preserve and block_type in LEGACY_CACHE_BLOCKS:
+                continue
             for item in sgff.blocks[block_type]:
                 block_data = self._serialize(block_type, item)
                 if block_data is not None:
@@ -122,8 +141,10 @@ class SgffWriter:
         if block_type == 10:
             return self._serialize_features(data)
 
-        # History tree (7) - LZMA compressed XML
+        # History tree (7) - plain XML before v15, LZMA-compressed XML after
         if block_type == 7:
+            if self._target_version < MODERN_EXPORT_VERSION:
+                return self._serialize_xml(data, xml_declaration=True)
             return self._serialize_lzma_xml(data)
 
         # History node (11) - binary format
@@ -753,13 +774,15 @@ class SgffWriter:
         return buf.getvalue()
 
     @classmethod
-    def to_file(cls, sgff: SgffObject, filepath: Union[str, Path]) -> None:
+    def to_file(
+        cls, sgff: SgffObject, filepath: Union[str, Path], preserve: bool = False
+    ) -> None:
         """Write to file path"""
-        cls(filepath).write(sgff)
+        cls(filepath).write(sgff, preserve=preserve)
 
     @classmethod
-    def to_bytes(cls, sgff: SgffObject) -> bytes:
+    def to_bytes(cls, sgff: SgffObject, preserve: bool = False) -> bytes:
         """Write to bytes"""
         stream = BytesIO()
-        cls(stream).write(sgff)
+        cls(stream).write(sgff, preserve=preserve)
         return stream.getvalue()

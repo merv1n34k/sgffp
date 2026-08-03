@@ -8,7 +8,7 @@ from typing import Union, BinaryIO
 from pathlib import Path
 
 from .internal import SgffObject, Cookie
-from .parsers import parse_blocks
+from .parsers import parse_blocks, scheme_for
 
 
 class SgffReader:
@@ -47,7 +47,7 @@ class SgffReader:
             import_version=struct.unpack(">H", self.stream.read(2))[0],
         )
 
-        blocks = parse_blocks(self.stream)
+        blocks = parse_blocks(self.stream, scheme_for(cookie.export_version))
 
         return SgffObject(cookie=cookie, blocks=blocks)
 

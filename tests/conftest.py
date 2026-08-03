@@ -31,6 +31,12 @@ def test3_dna(data_dir):
 
 
 @pytest.fixture
+def legacy_v13_dna(data_dir):
+    """Legacy SnapGene file (export_version 13) with a plain-XML history tree."""
+    return data_dir / "legacy_v13.dna"
+
+
+@pytest.fixture
 def test_rna(data_dir):
     """Path to test.rna file"""
     return data_dir / "test.rna"
