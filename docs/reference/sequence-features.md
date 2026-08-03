@@ -170,8 +170,8 @@ from sgffp import SgffBindingSite
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `start` | `int` | `0` | Start position (0-based) |
-| `end` | `int` | `0` | End position (1-based) |
+| `start` | `int` | `0` | Binding start (0-based, inclusive) |
+| `end` | `int` | `0` | Binding end (0-based, exclusive — half-open `[start, end)`) |
 | `bound_strand` | `str` | `"+"` | `"+"` (forward/top) or `"-"` (reverse/bottom) |
 | `annealed_bases` | `str` | `""` | Annealed base sequence |
 | `melting_temperature` | `float \| None` | `None` | Melting temperature in °C |

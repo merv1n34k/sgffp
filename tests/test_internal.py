@@ -272,6 +272,23 @@ class TestSgffObjectBuilder:
         assert sgff.primers[0].sequence == "ATCG"
         assert sgff.primers[0].bind_position == 0
 
+    def test_add_primer_sets_binding_site_range(self):
+        """add_primer records a valid [start, end) range and annealed bases."""
+        sgff = SgffObject.new("ATCGATCGATCG")
+        sgff.add_primer("fwd", "ATCG", bind_position=4)
+        bs = sgff.primers[0].binding_sites[0]
+        assert bs.start == 4
+        assert bs.end == 8  # start + len(sequence)
+        assert bs.annealed_bases == "ATCG"
+
+    def test_add_primer_explicit_bind_end(self):
+        """An explicit bind_end overrides the length-derived default."""
+        sgff = SgffObject.new("ATCGATCGATCG")
+        sgff.add_primer("fwd", "ATCG", bind_position=2, bind_end=10)
+        bs = sgff.primers[0].binding_sites[0]
+        assert bs.start == 2
+        assert bs.end == 10
+
     def test_chaining(self):
         """Builder methods return self for chaining"""
         sgff = (

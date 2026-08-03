@@ -342,13 +342,25 @@ class SgffObject:
         name: str,
         sequence: str,
         bind_position: Optional[int] = None,
+        bind_end: Optional[int] = None,
         bind_strand: str = "+",
     ) -> "SgffObject":
-        """Add a primer. Returns self for chaining."""
+        """Add a primer. Returns self for chaining.
+
+        ``bind_position`` is the 0-based start of the binding site. ``bind_end``
+        is the 0-based half-open end; it defaults to ``bind_position + len(sequence)``
+        so a full-length anneal is recorded with a valid range.
+        """
         binding_sites = []
         if bind_position is not None:
+            end = bind_end if bind_end is not None else bind_position + len(sequence)
             binding_sites.append(
-                SgffBindingSite(start=bind_position, bound_strand=bind_strand)
+                SgffBindingSite(
+                    start=bind_position,
+                    end=end,
+                    bound_strand=bind_strand,
+                    annealed_bases=sequence,
+                )
             )
         primer = SgffPrimer(
             name=name,
