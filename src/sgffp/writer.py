@@ -692,6 +692,36 @@ class SgffWriter:
     # Chunk order SnapGene emits; used when a trace carries no recorded encoding.
     _ZTR_DEFAULT_ORDER = ("SMP4", "BASE", "BPOS", "CNF4", "TEXT", "CLIP", "COMM")
 
+    # Filter chains SnapGene applies per chunk type, used for the same case. The
+    # RLE guard byte is left out so it gets derived from the data, as io_lib
+    # does. CLIP and COMM are written raw, which is what SnapGene does too.
+    _ZTR_DEFAULT_CHAINS = {
+        "SMP4": [
+            {"format": ztr.ZLIB},
+            {"format": ztr.RLE},
+            {"format": ztr.FOLLOW1},
+            {"format": ztr.SHRINK_16TO8},
+            {"format": ztr.DELTA2, "level": 3},
+        ],
+        "SAMP": [
+            {"format": ztr.ZLIB},
+            {"format": ztr.SHRINK_16TO8},
+            {"format": ztr.DELTA2, "level": 3},
+        ],
+        "BPOS": [
+            {"format": ztr.ZLIB},
+            {"format": ztr.SHRINK_32TO8},
+            {"format": ztr.DELTA4, "level": 1},
+        ],
+        "CNF4": [
+            {"format": ztr.ZLIB},
+            {"format": ztr.RLE},
+            {"format": ztr.DELTA1, "level": 1},
+        ],
+        "BASE": [{"format": ztr.ZLIB}],
+        "TEXT": [{"format": ztr.ZLIB}],
+    }
+
     @staticmethod
     def _ztr_chunk_payload(
         chunk_type: str, meta: bytes, data: Dict, comm_index: int = 0
@@ -755,8 +785,8 @@ class SgffWriter:
 
         When the trace was read from a file, ``encoding`` records the chunk
         order and each chunk's filter chain; replaying it reproduces the source
-        bytes exactly. Traces built from scratch have no such record, so their
-        chunks are written unfiltered in SnapGene's chunk order.
+        bytes exactly. Traces built from scratch have no such record, so they
+        fall back to SnapGene's chunk order and per-type filter chains.
         """
         encoding = data.get("encoding") or {}
         version = encoding.get("version") or [1, 2]
@@ -791,6 +821,10 @@ class SgffWriter:
                     ]
                 elif present.get(name):
                     records.append({"type": name})
+            for record in records:
+                chain = self._ZTR_DEFAULT_CHAINS.get(record["type"])
+                if chain:
+                    record["chain"] = [dict(layer) for layer in chain]
 
         buf = BytesIO()
         buf.write(ztr.MAGIC)
