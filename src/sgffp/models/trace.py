@@ -177,16 +177,31 @@ class SgffTraceList(SgffListModel[SgffTrace]):
         return traces
 
     def _sync(self) -> None:
-        """Write traces to block storage."""
+        """Write traces to block storage.
+
+        Existing containers are rewritten in place so their flags and any other
+        nested blocks (e.g. block 8 properties) survive; rebuilding them from
+        scratch would drop that state whenever a single trace was added.
+        """
         if self._items is None:
             return
-        if self._items:
-            containers = [
-                {"flags": 0, "blocks": {18: [t.to_dict()]}} for t in self._items
-            ]
-            self._set_blocks(16, containers)
-        else:
+        if not self._items:
             self._remove_block(16)
+            return
+
+        existing = self._get_blocks(16)
+        containers = []
+        for index, trace in enumerate(self._items):
+            if index < len(existing):
+                container = dict(existing[index])
+                container["blocks"] = {
+                    **container.get("blocks", {}),
+                    18: [trace.to_dict()],
+                }
+            else:
+                container = {"flags": 0, "blocks": {18: [trace.to_dict()]}}
+            containers.append(container)
+        self._set_blocks(16, containers)
 
     def __repr__(self) -> str:
         return f"SgffTraceList(count={len(self)})"
