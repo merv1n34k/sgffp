@@ -6,12 +6,13 @@ import struct
 import json
 import lzma
 import zlib
-from typing import Union, BinaryIO, Any, Dict
+from typing import Union, BinaryIO, Any, Dict, Optional
 from pathlib import Path
 from io import BytesIO
 
 import xmltodict
 
+from . import ztr
 from .internal import SgffObject
 from .parsers import MODERN_EXPORT_VERSION, LEGACY_CACHE_BLOCKS
 
@@ -656,9 +657,10 @@ class SgffWriter:
         flags = data.get("flags", 0)
         buf.write(struct.pack(">I", flags))
 
-        # Nested blocks (typically block 18 trace + optional block 8 properties)
+        # Nested blocks (typically block 18 trace + optional block 8 properties).
+        # Emitted in parse order, not sorted: SnapGene writes 18 before 8.
         nested = data.get("blocks", {})
-        for block_type in sorted(nested.keys()):
+        for block_type in nested:
             if not isinstance(block_type, int):
                 continue
             for item in nested[block_type]:
@@ -687,89 +689,136 @@ class SgffWriter:
 
         return lzma.compress(buf.getvalue())
 
+    # Chunk order SnapGene emits; used when a trace carries no recorded encoding.
+    _ZTR_DEFAULT_ORDER = ("SMP4", "BASE", "BPOS", "CNF4", "TEXT", "CLIP", "COMM")
+
+    @staticmethod
+    def _ztr_chunk_payload(
+        chunk_type: str, meta: bytes, data: Dict, comm_index: int = 0
+    ) -> Optional[bytes]:
+        """Build one raw ZTR chunk payload (leading format byte + padding).
+
+        Always returns a payload for a known chunk type, degenerate ones
+        included — an empty TEXT chunk is a real thing SnapGene writes, and
+        dropping it would change the file. Returns None only for a chunk type
+        that cannot be rebuilt from the model.
+        """
+        if chunk_type == "BASE":
+            return b"\x00" + data.get("bases", "").encode("ascii")
+
+        if chunk_type == "BPOS":
+            positions = data.get("positions") or []
+            return b"\x00\x00\x00\x00" + struct.pack(
+                f">{len(positions)}I", *positions
+            )
+
+        if chunk_type == "CNF4":
+            return b"\x00" + bytes(data.get("confidence") or [])
+
+        if chunk_type == "SMP4":
+            samples = data.get("samples") or {}
+            payload = bytearray(b"\x00\x00")
+            for channel in "ACGT":
+                values = samples.get(channel) or []
+                payload += struct.pack(f">{len(values)}H", *values)
+            return bytes(payload)
+
+        if chunk_type == "SAMP":
+            channel = meta[0:1].decode("ascii", errors="ignore")
+            values = (data.get("samples") or {}).get(channel) or []
+            return b"\x00\x00" + struct.pack(f">{len(values)}H", *values)
+
+        if chunk_type == "TEXT":
+            payload = bytearray(b"\x00")
+            for key, value in (data.get("text") or {}).items():
+                payload += key.encode("ascii") + b"\x00"
+                payload += str(value).encode("ascii") + b"\x00"
+            # The pair list is terminated by an empty identifier
+            payload += b"\x00"
+            return bytes(payload)
+
+        if chunk_type == "CLIP":
+            clip = data.get("clip") or {}
+            return b"\x00" + struct.pack(
+                ">II", clip.get("left", 0), clip.get("right", 0)
+            )
+
+        if chunk_type == "COMM":
+            comments = data.get("comments") or []
+            comment = comments[comm_index] if comm_index < len(comments) else ""
+            return b"\x00" + comment.encode("ascii")
+
+        return None
+
     def _serialize_ztr(self, data: Dict) -> bytes:
-        """Serialize trace data to ZTR format."""
+        """Serialize trace data to ZTR format.
+
+        When the trace was read from a file, ``encoding`` records the chunk
+        order and each chunk's filter chain; replaying it reproduces the source
+        bytes exactly. Traces built from scratch have no such record, so their
+        chunks are written unfiltered in SnapGene's chunk order.
+        """
+        encoding = data.get("encoding") or {}
+        version = encoding.get("version") or [1, 2]
+        records = encoding.get("chunks")
+
+        if not records:
+            samples = data.get("samples") or {}
+            all_channels = all(samples.get(ch) for ch in "ACGT")
+            present = {
+                "BASE": bool(data.get("bases")),
+                "BPOS": bool(data.get("positions")),
+                "CNF4": bool(data.get("confidence")),
+                "SMP4": all_channels,
+                "TEXT": bool(data.get("text")),
+                "CLIP": bool(data.get("clip")),
+            }
+            records = []
+            for name in self._ZTR_DEFAULT_ORDER:
+                if name == "SMP4" and samples and not all_channels:
+                    # Partial channel data goes out as one SAMP chunk per channel
+                    records += [
+                        {
+                            "type": "SAMP",
+                            "meta": (ch.encode("ascii") + b"\x00\x00\x00").hex(),
+                        }
+                        for ch in "ACGT"
+                        if samples.get(ch)
+                    ]
+                elif name == "COMM":
+                    records += [
+                        {"type": "COMM"} for _ in (data.get("comments") or [])
+                    ]
+                elif present.get(name):
+                    records.append({"type": name})
+
         buf = BytesIO()
+        buf.write(ztr.MAGIC)
+        buf.write(struct.pack(">BB", version[0], version[1]))
 
-        # ZTR magic and version
-        buf.write(b"\xaeZTR\r\n\x1a\n")  # Magic
-        buf.write(struct.pack(">BB", 1, 2))  # Version 1.2
+        comm_index = 0
+        for record in records:
+            chunk_type = record.get("type", "")
+            meta = bytes.fromhex(record.get("meta", ""))
 
-        # Helper to write a chunk
-        def write_chunk(chunk_type: str, chunk_data: bytes, metadata: bytes = b""):
-            # Type (4 bytes, space-padded)
-            type_bytes = chunk_type.encode("ascii").ljust(4)[:4]
-            buf.write(type_bytes)
-            # Metadata length + metadata
-            buf.write(struct.pack(">I", len(metadata)))
-            if metadata:
-                buf.write(metadata)
-            # Data length + data
+            raw_hex = record.get("raw")
+            if raw_hex is not None:
+                # Unsupported filter or unmodelled chunk: replay bytes untouched
+                chunk_data = bytes.fromhex(raw_hex)
+            else:
+                payload = self._ztr_chunk_payload(chunk_type, meta, data, comm_index)
+                if payload is None:
+                    continue
+                chunk_data = ztr.pack(payload, record.get("chain") or [])
+
+            if chunk_type == "COMM":
+                comm_index += 1
+
+            buf.write(chunk_type.encode("ascii").ljust(4)[:4])
+            buf.write(struct.pack(">I", len(meta)))
+            buf.write(meta)
             buf.write(struct.pack(">I", len(chunk_data)))
             buf.write(chunk_data)
-
-        # BASE chunk: format byte (0) + padding (1) + ASCII bases
-        if data.get("bases"):
-            bases = data["bases"].encode("ascii")
-            chunk_data = b"\x00\x00" + bases
-            write_chunk("BASE", chunk_data)
-
-        # BPOS chunk: format byte (0) + 3 padding + 4-byte positions
-        if data.get("positions"):
-            positions = data["positions"]
-            chunk_data = b"\x00\x00\x00\x00"
-            for pos in positions:
-                chunk_data += struct.pack(">I", pos)
-            write_chunk("BPOS", chunk_data)
-
-        # CNF4 chunk: format byte (0) + confidence values (1 byte per base)
-        if data.get("confidence"):
-            confidence = data["confidence"]
-            chunk_data = b"\x00" + bytes(confidence)
-            write_chunk("CNF4", chunk_data)
-
-        # SMP4 chunk: format byte (0) + padding + channel data
-        if data.get("samples"):
-            samples = data["samples"]
-            # Check if all channels present (use SMP4), otherwise use SAMP
-            if all(ch in samples for ch in ["A", "C", "G", "T"]):
-                chunk_data = b"\x00\x00"
-                for channel in ["A", "C", "G", "T"]:
-                    for val in samples.get(channel, []):
-                        chunk_data += struct.pack(">H", val)
-                write_chunk("SMP4", chunk_data)
-            else:
-                # Individual SAMP chunks per channel
-                for channel in ["A", "C", "G", "T"]:
-                    if samples.get(channel):
-                        chunk_data = b"\x00\x00"
-                        for val in samples[channel]:
-                            chunk_data += struct.pack(">H", val)
-                        # Metadata is 4-byte channel name
-                        metadata = channel.encode("ascii") + b"\x00\x00\x00"
-                        write_chunk("SAMP", chunk_data, metadata)
-
-        # TEXT chunk: format byte (0) + padding + null-terminated key-value pairs
-        if data.get("text"):
-            text_data = b"\x00\x00"
-            for key, val in data["text"].items():
-                text_data += key.encode("ascii") + b"\x00"
-                text_data += str(val).encode("ascii") + b"\x00"
-            write_chunk("TEXT", text_data)
-
-        # CLIP chunk: format byte (0) + left (4) + right (4)
-        if data.get("clip"):
-            clip = data["clip"]
-            chunk_data = b"\x00"
-            chunk_data += struct.pack(">I", clip.get("left", 0))
-            chunk_data += struct.pack(">I", clip.get("right", 0))
-            write_chunk("CLIP", chunk_data)
-
-        # COMM chunks: format byte (0) + free text
-        if data.get("comments"):
-            for comment in data["comments"]:
-                chunk_data = b"\x00" + comment.encode("ascii")
-                write_chunk("COMM", chunk_data)
 
         return buf.getvalue()
 

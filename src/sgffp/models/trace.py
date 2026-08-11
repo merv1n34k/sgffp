@@ -76,6 +76,10 @@ class SgffTrace:
     clip: Optional[SgffTraceClip] = None
     text: Dict[str, str] = field(default_factory=dict)
     comments: List[str] = field(default_factory=list)
+    # ZTR chunk order and per-chunk filter chain as read from the file. Kept so
+    # the writer can reproduce the source bytes exactly; empty for a trace built
+    # from scratch, which is then written unfiltered.
+    encoding: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def sequence(self) -> str:
@@ -126,6 +130,7 @@ class SgffTrace:
             clip=clip,
             text=data.get("text", {}),
             comments=data.get("comments", []),
+            encoding=data.get("encoding", {}),
         )
 
     def to_dict(self) -> Dict:
@@ -145,6 +150,8 @@ class SgffTrace:
             result["text"] = self.text
         if self.comments:
             result["comments"] = self.comments
+        if self.encoding:
+            result["encoding"] = self.encoding
 
         return result
 
