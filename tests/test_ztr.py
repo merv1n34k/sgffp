@@ -265,6 +265,41 @@ class TestZtrByteIdentity:
 # =============================================================================
 
 
+class TestTraceContainerState:
+    """Container state must survive a list mutation, not just a plain write."""
+
+    def test_adding_a_trace_keeps_other_containers_flags(self, legacy_v13_dna):
+        from sgffp.models.trace import SgffTrace
+
+        sgff = SgffReader.from_file(legacy_v13_dna)
+        before = [c.get("flags") for c in sgff.blocks[16]]
+        assert set(before) != {0}, "fixture no longer covers non-zero flags"
+
+        sgff.traces.add(SgffTrace(bases="ACGT"))
+
+        after = [c.get("flags") for c in sgff.blocks[16]]
+        assert after[: len(before)] == before
+        assert after[-1] == 0  # the appended container
+
+    def test_adding_a_trace_keeps_other_nested_blocks(self):
+        from sgffp.models.trace import SgffTrace, SgffTraceList
+
+        blocks = {
+            16: [{"flags": 7, "blocks": {18: [{"bases": "ACGT"}], 8: [{"Props": "x"}]}}]
+        }
+        traces = SgffTraceList(blocks)
+        traces.add(SgffTrace(bases="TTTT"))
+
+        container = blocks[16][0]
+        assert container["flags"] == 7
+        assert container["blocks"][8] == [{"Props": "x"}]
+
+    def test_removing_all_traces_drops_the_block(self, legacy_v13_dna):
+        sgff = SgffReader.from_file(legacy_v13_dna)
+        sgff.traces.clear()
+        assert 16 not in sgff.blocks
+
+
 def build_ztr(chunks):
     """Assemble a ZTR blob from (type, meta, encoded_data) triples."""
     blob = bytearray(ZTR_MAGIC + bytes([1, 2]))
@@ -319,19 +354,50 @@ class TestChunkEdgeCases:
         assert parse_ztr(blob)["comments"] == ["first", "second"]
         assert self._rewrite(blob) == blob
 
-    def test_trace_built_from_scratch_is_written_unfiltered(self):
-        """No recorded encoding means raw chunks in SnapGene's order."""
-        data = {
-            "bases": "ACGT",
-            "positions": [1, 2, 3, 4],
-            "confidence": [10] * 16,
-            "samples": {ch: [1, 2, 3] for ch in "ACGT"},
+    SCRATCH_TRACE = {
+        "bases": "ACGT" * 40,
+        "positions": list(range(1, 161)),
+        "confidence": [10] * 640,
+        "samples": {ch: list(range(200)) for ch in "ACGT"},
+        "text": {"NAME": "synthetic"},
+        "clip": {"left": 1, "right": 150},
+    }
+
+    def test_trace_built_from_scratch_roundtrips(self):
+        """No recorded encoding: SnapGene's chunk order and default chains."""
+        blob = SgffWriter(None)._serialize_ztr(self.SCRATCH_TRACE)
+        order = [chunk_type for chunk_type, _m, _d in iter_chunks(blob)]
+        assert order == ["SMP4", "BASE", "BPOS", "CNF4", "TEXT", "CLIP"]
+
+        reparsed = parse_ztr(blob)
+        for key, value in self.SCRATCH_TRACE.items():
+            assert reparsed[key] == value
+
+    def test_trace_built_from_scratch_is_compressed(self):
+        """Writing these raw would inflate the trace roughly fourfold."""
+        blob = SgffWriter(None)._serialize_ztr(self.SCRATCH_TRACE)
+        filtered = {
+            chunk_type: data[0]
+            for chunk_type, _meta, data in iter_chunks(blob)
+            if data
         }
+        assert filtered["SMP4"] == ztr.ZLIB
+        assert filtered["BPOS"] == ztr.ZLIB
+        assert filtered["CNF4"] == ztr.ZLIB
+        assert filtered["BASE"] == ztr.ZLIB
+        # CLIP is small enough that SnapGene leaves it raw
+        assert filtered["CLIP"] == ztr.RAW
+
+        raw_only = {k: v for k, v in self.SCRATCH_TRACE.items()}
+        unfiltered_size = sum(
+            len(SgffWriter._ztr_chunk_payload(t, b"", raw_only) or b"")
+            for t in ("SMP4", "BASE", "BPOS", "CNF4", "TEXT", "CLIP")
+        )
+        assert len(blob) < unfiltered_size
+
+    def test_partial_channels_use_samp_chunks(self):
+        data = {"samples": {"A": list(range(50)), "C": list(range(50))}}
         blob = SgffWriter(None)._serialize_ztr(data)
         order = [chunk_type for chunk_type, _m, _d in iter_chunks(blob)]
-        assert order == ["SMP4", "BASE", "BPOS", "CNF4"]
-        reparsed = parse_ztr(blob)
-        assert reparsed["bases"] == "ACGT"
-        assert reparsed["positions"] == [1, 2, 3, 4]
-        assert reparsed["confidence"] == [10] * 16
-        assert reparsed["samples"] == {ch: [1, 2, 3] for ch in "ACGT"}
+        assert order == ["SAMP", "SAMP"]
+        assert parse_ztr(blob)["samples"] == data["samples"]
