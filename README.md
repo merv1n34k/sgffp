@@ -141,6 +141,7 @@ This project would not have been possible without previous work done by
 Also would like to say thank for the people who helped the project:
 - Manuel Lera-Ramirez (@manulera) for his PRs and suggestions
 - Cory Tobin (@cory-mozza) for reviewing new blocks
+- Nicola Zilio (@nicolazilio) for legacy SnapGene support and issue reviews
 
 ## License
 
