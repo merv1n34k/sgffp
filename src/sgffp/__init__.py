@@ -2,6 +2,7 @@
 SnapGene File Format (SGFF) parser and writer
 """
 
+from . import ztr
 from .reader import SgffReader
 from .writer import SgffWriter
 from .internal import SgffObject, Cookie, BlockList
@@ -72,4 +73,5 @@ __all__ = [
     "SgffBamRecord",
     "SgffBamReference",
     "SgffOps",
+    "ztr",
 ]

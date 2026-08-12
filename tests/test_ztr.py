@@ -68,6 +68,14 @@ def block_16_bytes(raw):
 # =============================================================================
 
 
+def test_codec_is_a_deliberate_export():
+    """`sgffp.ztr` must be exported, not merely reachable via parsers' import."""
+    import sgffp
+
+    assert "ztr" in sgffp.__all__
+    assert sgffp.ztr is ztr
+
+
 class TestZtrFilters:
     """Each filter must invert exactly, for arbitrary payloads."""
 
