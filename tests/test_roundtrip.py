@@ -2,7 +2,8 @@
 End-to-end roundtrip tests: read → write → read
 
 Blocks 7 (history tree) and 11 (history nodes) are fully round-trippable.
-Block 18 (ZTR trace) requires special handling and is tested separately.
+Block 18 (ZTR trace) round-trips byte for byte via the recorded chunk
+encoding; its byte-level assertions live in test_ztr.py.
 """
 
 import pytest
@@ -12,11 +13,11 @@ from sgffp.writer import SgffWriter
 from sgffp.internal import SgffObject
 
 # Block types that are fully round-trippable
-ROUNDTRIP_BLOCKS = {0, 1, 5, 6, 7, 8, 10, 11, 17, 21, 32}
+ROUNDTRIP_BLOCKS = {0, 1, 5, 6, 7, 8, 10, 11, 16, 17, 21, 32}
 
-# Block types with complex structures that may not round-trip
-# 18 = ZTR trace format (complex binary, tested separately)
-SKIP_BLOCKS = {18}
+# Nothing needs excluding: block 16 (and the nested 18 traces it carries) now
+# round-trips byte for byte via the recorded ZTR chunk encoding.
+SKIP_BLOCKS = set()
 
 
 def filter_roundtrippable_blocks(sgff):

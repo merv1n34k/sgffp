@@ -407,20 +407,54 @@ ZTR format (Staden Package) for Sanger sequencing chromatograms.
 | data_length | 4 | Chunk data length (big-endian uint32) |
 | data | N | Chunk data (may be compressed) |
 
-**Compression:** First byte of chunk data: `0x00` = raw, `0x02` = zlib.
+**Compression:** chunk data is not compressed once but through a *chain* of
+filters. Each layer prefixes its own format byte, so decoding loops until that
+byte is `0x00` (RAW). A typical `SMP4` chunk reads:
 
-**Chunk types:**
+```
+zlib -> RLE -> FOLLOW1 -> 16TO8 -> DELTA2 -> raw
+```
+
+Reading only the outermost layer leaves the rest of the chain to be
+misinterpreted as sample values.
+
+| Byte | Filter | Notes |
+|------|--------|-------|
+| `0x00` | RAW | Innermost layer; decoding stops here |
+| `0x01` | RLE | `[1][uint32 LE length][guard]`; a literal guard byte is escaped as `guard 0` |
+| `0x02` | ZLIB | `[2][uint32 LE length][deflate stream]` |
+| `0x40`–`0x42` | DELTA1/2/4 | Successive differences over 1-, 2- or 4-byte words; `[fmt][level]`, DELTA4 pads to 4 bytes |
+| `0x46`/`0x47` | 16TO8 / 32TO8 | Store 16/32-bit words in one byte, escaping wide values with `-128` |
+| `0x48` | FOLLOW1 | 256-byte "most frequent successor" table, then residuals |
+
+Chains observed in SnapGene files: `SMP4` as above (sometimes without RLE),
+`BPOS` as `zlib -> 32TO8 -> DELTA4`, `CNF4` as `zlib -> RLE -> DELTA1`,
+`BASE`/`TEXT` as plain zlib, and `CLIP` raw.
+
+io_lib also defines XRLE, XRLE2, CHEB445, ICHEB, LOG2, STHUFF, QSHIFT and
+TSHIFT. None have been observed in SnapGene output. `LOG2` is lossy by
+construction and `CHEB445` is disabled upstream.
+
+Since every filter records its own parameters in the stream, a chain read from
+a file can be replayed exactly on write. SnapGene's zlib layer is
+`deflateInit2(level=1, windowBits=15, memLevel=8, Z_HUFFMAN_ONLY)`; any other
+level or strategy yields different bytes for identical input.
+
+**Chunk types.** Each payload below begins with the RAW format byte:
 
 | Type | Description | Data format |
 |------|-------------|-------------|
-| `BASE` | Base calls | Padding + ASCII bases |
-| `BPOS` | Base-to-sample positions | Padding + big-endian uint32 per base |
-| `CNF4` | Confidence scores | 1 byte per base |
-| `SMP4` | Combined ACGT samples | Padding + big-endian uint16 (A,C,G,T sequential) |
-| `SAMP` | Single channel samples | Metadata: channel letter. Data: big-endian uint16 |
-| `TEXT` | Metadata key-value pairs | Null-terminated pairs |
-| `CLIP` | Quality clip boundaries | Left uint32 + right uint32 |
-| `COMM` | Comments | ASCII text |
+| `BASE` | Base calls | 1 byte + ASCII bases |
+| `BPOS` | Base-to-sample positions | 1 byte + 3 padding + big-endian uint32 per base |
+| `CNF4` | Confidence scores | 1 byte + 4 bytes per base: the called-base score for every base, then the A/C/G/T scores |
+| `SMP4` | Combined ACGT samples | 1 byte + 1 padding + big-endian uint16, channels A, C, G, T back to back |
+| `SAMP` | Single channel samples | Metadata: channel letter. 1 byte + 1 padding + big-endian uint16 |
+| `TEXT` | Metadata key-value pairs | 1 byte + null-terminated key/value pairs, terminated by an empty identifier (a trailing extra `\0`) |
+| `CLIP` | Quality clip boundaries | 1 byte + left uint32 + right uint32 |
+| `COMM` | Comments | 1 byte + ASCII text |
+
+Chunk order is significant for byte-identical output. SnapGene writes
+`SMP4, BASE, BPOS, CNF4, TEXT, CLIP`.
 
 ### Block 20 — Strand Colors (XML)
 

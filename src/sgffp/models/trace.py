@@ -76,6 +76,10 @@ class SgffTrace:
     clip: Optional[SgffTraceClip] = None
     text: Dict[str, str] = field(default_factory=dict)
     comments: List[str] = field(default_factory=list)
+    # ZTR chunk order and per-chunk filter chain as read from the file. Kept so
+    # the writer can reproduce the source bytes exactly; empty for a trace built
+    # from scratch, which is then written unfiltered.
+    encoding: Dict[str, Any] = field(default_factory=dict)
 
     @property
     def sequence(self) -> str:
@@ -126,6 +130,7 @@ class SgffTrace:
             clip=clip,
             text=data.get("text", {}),
             comments=data.get("comments", []),
+            encoding=data.get("encoding", {}),
         )
 
     def to_dict(self) -> Dict:
@@ -145,6 +150,8 @@ class SgffTrace:
             result["text"] = self.text
         if self.comments:
             result["comments"] = self.comments
+        if self.encoding:
+            result["encoding"] = self.encoding
 
         return result
 
@@ -170,16 +177,31 @@ class SgffTraceList(SgffListModel[SgffTrace]):
         return traces
 
     def _sync(self) -> None:
-        """Write traces to block storage."""
+        """Write traces to block storage.
+
+        Existing containers are rewritten in place so their flags and any other
+        nested blocks (e.g. block 8 properties) survive; rebuilding them from
+        scratch would drop that state whenever a single trace was added.
+        """
         if self._items is None:
             return
-        if self._items:
-            containers = [
-                {"flags": 0, "blocks": {18: [t.to_dict()]}} for t in self._items
-            ]
-            self._set_blocks(16, containers)
-        else:
+        if not self._items:
             self._remove_block(16)
+            return
+
+        existing = self._get_blocks(16)
+        containers = []
+        for index, trace in enumerate(self._items):
+            if index < len(existing):
+                container = dict(existing[index])
+                container["blocks"] = {
+                    **container.get("blocks", {}),
+                    18: [trace.to_dict()],
+                }
+            else:
+                container = {"flags": 0, "blocks": {18: [trace.to_dict()]}}
+            containers.append(container)
+        self._set_blocks(16, containers)
 
     def __repr__(self) -> str:
         return f"SgffTraceList(count={len(self)})"
